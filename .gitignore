@@ -109,3 +109,8 @@ public
 
 # Vite custom cache
 .vite
+
+# Spreadsheet data files
+*.xlsx
+*.xls
+*.csv

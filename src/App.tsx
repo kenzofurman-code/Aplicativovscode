@@ -168,6 +168,44 @@ const DaysSelector = ({ dailyWork, disabled, onChange }) => {
 };
 
 // --- Algoritmo de Sincronização e Recálculo ---
+const serializeCrono = (cronoArray) => {
+  if (!Array.isArray(cronoArray)) return [];
+  return cronoArray.map(item => {
+    if (Array.isArray(item)) return item;
+    return [
+      item.id || '',
+      item.macro || '',
+      item.floor || '',
+      item.service || '',
+      Number(item.duration) || 0,
+      item.start || '',
+      item.end || '',
+      Number(item.cost) || 0,
+      item.responsible || '',
+      Number(item.progress) || 0
+    ];
+  });
+};
+
+const deserializeCrono = (tuplesArray) => {
+  if (!Array.isArray(tuplesArray)) return [];
+  return tuplesArray.map(t => {
+    if (t && typeof t === 'object' && !Array.isArray(t)) return t;
+    return {
+      id: t[0] || '',
+      macro: t[1] || '',
+      floor: t[2] || '',
+      service: t[3] || '',
+      duration: Number(t[4]) || 0,
+      start: t[5] || '',
+      end: t[6] || '',
+      cost: Number(t[7]) || 0,
+      responsible: t[8] || '',
+      progress: Number(t[9]) || 0
+    };
+  });
+};
+
 const roundDown25 = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -420,7 +458,7 @@ const App = () => {
         setHistory(d.history || []);
         setWeights(d.weights || {});
         setPlanning(d.planning || []);
-        setCronogramaInicial(d.cronogramaInicial || INITIAL_CRONOGRAMA);
+        setCronogramaInicial(deserializeCrono(d.cronogramaInicial || INITIAL_CRONOGRAMA));
         setTeams(d.teams || INITIAL_TEAMS);
         setDelayReasons(d.delayReasons || INITIAL_DELAYS);
         setPpcHistory(d.ppcHistory || []);
@@ -450,6 +488,7 @@ const App = () => {
     const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
     const trimmedHistory = (hist || []).slice(-150); 
     const syncedCrono = syncCronogramaWithFloorsData(crono, fls, data);
+    const serializedCrono = serializeCrono(syncedCrono);
     try {
       await setDoc(docRef, { 
         floors: Array.isArray(fls) ? fls : [],
@@ -457,7 +496,7 @@ const App = () => {
         history: trimmedHistory,
         weights: wts || {},
         planning: Array.isArray(plans) ? plans : [],
-        cronogramaInicial: Array.isArray(syncedCrono) ? syncedCrono.slice(0, 4000) : [],
+        cronogramaInicial: Array.isArray(serializedCrono) ? serializedCrono.slice(0, 5500) : [],
         teams: Array.isArray(tms) ? tms : INITIAL_TEAMS,
         delayReasons: Array.isArray(delays) ? delays : INITIAL_DELAYS,
         ppcHistory: Array.isArray(ppcHist) ? ppcHist.slice(-260) : [],
@@ -847,10 +886,11 @@ const App = () => {
     if (!XLSX) { setNotification({ message: "Aguarde o carregador de planilhas.", type: "error" }); return; }
 
     setIsImporting(true);
+    setImportStatus('Lendo e analisando planilha Excel...');
 
     const reader = new FileReader();
     reader.onload = (evt: any) => {
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const bstr = evt.target.result as string;
           const workbook = XLSX.read(bstr, { type: 'binary' });
@@ -861,25 +901,28 @@ const App = () => {
           if (data.length < 2) {
             setNotification({ message: "Planilha sem linhas suficientes.", type: "error" });
             setIsImporting(false);
+            setImportStatus('');
             return;
           }
 
           let headerIndex = 3; 
           for (let i = 0; i < Math.min(10, data.length); i++) {
             const rowStr = (data[i] || []).join('').toLowerCase();
-            if (rowStr.includes('pacote de trabalho') || rowStr.includes('serviço') || rowStr.includes('macroatividade') || rowStr.includes('id')) {
-              headerIndex = i; break;
+            // Exclude 'id' to prevent matching rows above header containing 'unidade' (which contains 'id')
+            if (rowStr.includes('pacote de trabalho') || rowStr.includes('serviço') || rowStr.includes('macroatividade')) {
+              headerIndex = i; 
+              break;
             }
           }
 
           if (data.length <= headerIndex + 1) {
             setNotification({ message: "Não há dados abaixo da linha de cabeçalho.", type: "error" });
             setIsImporting(false);
+            setImportStatus('');
             return;
           }
 
           const headerRow = data[headerIndex].map(h => String(h || '').trim().toLowerCase());
-          const superHeaderRow = headerIndex > 0 ? data[headerIndex - 1].map(h => String(h || '').trim().toLowerCase()) : [];
           
           const colIdx = {
             macro: 2,         // Coluna 3 - Pacote de serviço
@@ -901,9 +944,12 @@ const App = () => {
             const row = data[i];
             if (!row || row.length === 0) continue;
 
+            const rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? String(row[colIdx.service]).trim() : '';
+            // Skip rows without a valid service name or if it's '-'
+            if (!rawService || rawService === '-') continue;
+
             const rawMacro = colIdx.macro !== -1 && row[colIdx.macro] !== undefined ? row[colIdx.macro] : 'ESTRUTURA';
             const rawFloor = colIdx.floor !== -1 && row[colIdx.floor] !== undefined ? row[colIdx.floor] : 'Térreo';
-            const rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? row[colIdx.service] : `Atividade ${i}`;
             const rawDuration = colIdx.duration !== -1 && row[colIdx.duration] !== undefined ? parseInt(row[colIdx.duration], 10) : 10;
             const rawStart = parseExcelDate(colIdx.start !== -1 && row[colIdx.start] !== undefined ? row[colIdx.start] : undefined);
             const rawEnd = parseExcelDate(colIdx.end !== -1 && row[colIdx.end] !== undefined ? row[colIdx.end] : undefined, rawStart);
@@ -915,28 +961,37 @@ const App = () => {
               rawProgress = parsePercent(row[colIdx.progress]);
             }
 
-            if (rawResp && rawResp !== 'UNDEFINED' && rawResp !== '') importedTeams.add(rawResp);
+            if (rawResp && rawResp !== 'UNDEFINED' && rawResp !== '' && rawResp !== '-') importedTeams.add(rawResp);
             const floorName = String(rawFloor || 'Térreo').trim();
             importedFloors.add(floorName);
 
             parsedItems.push({
-              id: `xls_${Date.now()}_${i}`, macro: String(rawMacro || 'ESTRUTURA').trim().toUpperCase(),
-              floor: floorName, service: String(rawService || '').trim().toUpperCase(),
-              duration: isNaN(rawDuration) ? 5 : rawDuration, start: rawStart, end: rawEnd,
-              cost: isNaN(rawCost) ? 0 : rawCost, responsible: rawResp || 'EQUIPA GERAL', progress: clampPercent(rawProgress)
+              id: `xls_${Date.now()}_${i}`, 
+              macro: String(rawMacro || 'ESTRUTURA').trim().toUpperCase(),
+              floor: floorName, 
+              service: rawService.toUpperCase(),
+              duration: isNaN(rawDuration) ? 5 : rawDuration, 
+              start: rawStart, 
+              end: rawEnd,
+              cost: isNaN(rawCost) ? 0 : rawCost, 
+              responsible: rawResp || 'EQUIPA GERAL', 
+              progress: clampPercent(rawProgress)
             });
           }
 
           if (parsedItems.length === 0) {
             setNotification({ message: "Não foi possível extrair nenhum serviço.", type: "error" });
             setIsImporting(false);
+            setImportStatus('');
             return;
           }
           
-          if (parsedItems.length > 4000) {
-            setNotification({ message: `Limite de segurança: Importados apenas os primeiros 4000 serviços.`, type: "error" });
-            parsedItems = parsedItems.slice(0, 4000);
+          if (parsedItems.length > 5500) {
+            setNotification({ message: `Limite de segurança: Importados apenas os primeiros 5500 serviços.`, type: "error" });
+            parsedItems = parsedItems.slice(0, 5500);
           }
+
+          setImportStatus('Preparando dados e limpando registros antigos...');
 
           // Clear old Excel-imported items from allFloorsData to keep it incremental and clean
           const clearOldExcelItems = (floorsData) => {
@@ -954,100 +1009,78 @@ const App = () => {
           };
 
           const baseFloorsData = clearOldExcelItems(allFloorsData);
+          const updatedTeams = Array.from(importedTeams);
+          const updatedFloorsList = Array.from(importedFloors);
+          const updatedFloorsData = cloneDeep(baseFloorsData);
+          const updatedWeights = cloneDeep(weights);
+          const importedMacroKeys = new Set<string>();
 
-          const batchSize = 150;
-          const totalItems = parsedItems.length;
-          const totalBatches = Math.ceil(totalItems / batchSize);
-          let currentBatch = 0;
+          parsedItems.forEach(item => {
+            const macroKey = slugify(item.macro);
+            importedMacroKeys.add(macroKey);
+            if (!updatedFloorsData[item.floor]) updatedFloorsData[item.floor] = {};
+            if (!updatedFloorsData[item.floor][macroKey]) updatedFloorsData[item.floor][macroKey] = { title: item.macro, items: [] };
+            if (!updatedWeights[item.floor]) updatedWeights[item.floor] = {};
+            if (updatedWeights[item.floor][macroKey] === undefined) updatedWeights[item.floor][macroKey] = 1;
+            const exists = updatedFloorsData[item.floor][macroKey].items.some(it => it.name === item.service);
+            if (!exists) {
+              updatedFloorsData[item.floor][macroKey].items.push({ id: item.id, name: item.service, actualPercent: item.progress });
+            }
+          });
 
-          const saveBatch = async () => {
-            const endIdx = Math.min((currentBatch + 1) * batchSize, totalItems);
-            const batchParsedItems = parsedItems.slice(0, endIdx);
-            
-            const batchTeams = new Set<any>([...teams]);
-            const batchFloorsList = new Set<any>([...floors]);
-            const batchFloorsData = cloneDeep(baseFloorsData);
-            const batchWeights = cloneDeep(weights);
-            const batchMacroKeys = new Set<string>();
+          const autoTasks = [];
+          parsedItems.forEach(item => {
+            if (item.progress > 0 && item.progress < 100) {
+              autoTasks.push({
+                id: crypto.randomUUID(), weekId: currentWeekId, floor: item.floor,
+                sectionId: slugify(item.macro), itemId: item.id,
+                activityName: item.service, responsible: item.responsible, weight: 100,
+                executedBefore: roundDown25(item.progress),
+                plannedThisWeek: 100, progressThisWeek: 0,
+                finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: '',
+                delayReason: '', finalized: false
+              });
+            }
+          });
 
-            batchParsedItems.forEach(item => {
-              const macroKey = slugify(item.macro);
-              batchMacroKeys.add(macroKey);
-              if (item.responsible && item.responsible !== 'UNDEFINED' && item.responsible !== '') {
-                batchTeams.add(item.responsible);
-              }
-              const floorName = String(item.floor || 'Térreo').trim();
-              batchFloorsList.add(floorName);
+          const existingMatrices = matrices.length > 0 ? matrices : [{ id: 'default_matrix', name: 'Matriz Principal', floors: [], macros: [] }];
+          const updatedMatrices = existingMatrices.map((m, idx) => idx === 0 ? {
+            ...m,
+            floors: Array.from(new Set([...(m.floors || []), ...updatedFloorsList])),
+            macros: Array.from(new Set([...(m.macros || []), ...Array.from(importedMacroKeys)]))
+          } : m);
 
-              if (!batchFloorsData[floorName]) batchFloorsData[floorName] = {};
-              if (!batchFloorsData[floorName][macroKey]) batchFloorsData[floorName][macroKey] = { title: item.macro, items: [] };
-              if (!batchWeights[floorName]) batchWeights[floorName] = {};
-              if (batchWeights[floorName][macroKey] === undefined) batchWeights[floorName][macroKey] = 1;
-              const exists = batchFloorsData[floorName][macroKey].items.some(it => it.name === item.service);
-              if (!exists) {
-                batchFloorsData[floorName][macroKey].items.push({ id: item.id, name: item.service, actualPercent: item.progress });
-              }
-            });
+          // Maintain historical planning tasks for finalized/past weeks, overwrite active week tasks
+          const pastPlanning = planning.filter(t => t.weekId < currentWeekId);
+          const batchPlanning = [...pastPlanning, ...autoTasks];
+          const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(batchPlanning, updatedFloorsData);
 
-            const batchAutoTasks = [];
-            batchParsedItems.forEach(item => {
-              if (item.progress > 0 && item.progress < 100) {
-                batchAutoTasks.push({
-                  id: crypto.randomUUID(), weekId: currentWeekId, floor: item.floor,
-                  sectionId: slugify(item.macro), itemId: item.id,
-                  activityName: item.service, responsible: item.responsible, weight: 100,
-                  executedBefore: roundDown25(item.progress),
-                  plannedThisWeek: 100, progressThisWeek: 0,
-                  finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: '',
-                  delayReason: '', finalized: false
-                });
-              }
-            });
+          setImportStatus('Gravando dados no Firebase (Aguarde)...');
 
-            const existingMatrices = matrices.length > 0 ? matrices : [{ id: 'default_matrix', name: 'Matriz Principal', floors: [], macros: [] }];
-            const batchMatrices = existingMatrices.map((m, idx) => idx === 0 ? {
-              ...m,
-              floors: Array.from(new Set([...(m.floors || []), ...Array.from(batchFloorsList)])),
-              macros: Array.from(new Set([...(m.macros || []), ...Array.from(batchMacroKeys)]))
-            } : m);
-
-            // Maintain historical planning tasks for finalized/past weeks, overwrite active week tasks
-            const pastPlanning = planning.filter(t => t.weekId < currentWeekId);
-            const batchPlanning = [...pastPlanning, ...batchAutoTasks];
-            const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(batchPlanning, batchFloorsData);
-
-            setImportStatus(`Enviando dados para o Firebase: Lote ${currentBatch + 1} de ${totalBatches}... (${Math.round((endIdx / totalItems) * 100)}%)`);
-
-            await saveToDB(
-              Array.from(batchFloorsList),
-              syncedFloors,
-              history,
-              batchWeights,
-              recalculatedPlanning,
-              batchParsedItems,
-              Array.from(batchTeams),
-              delayReasons,
-              ppcHistory,
-              batchMatrices
-            );
-
-            currentBatch++;
-            if (currentBatch < totalBatches) {
-              setTimeout(saveBatch, 1500);
-            } else {
+          saveToDB(
+            updatedFloorsList,
+            syncedFloors,
+            history,
+            updatedWeights,
+            recalculatedPlanning,
+            parsedItems,
+            updatedTeams,
+            delayReasons,
+            ppcHistory,
+            updatedMatrices
+          )
+            .then(() => {
               setNotification({ message: `${parsedItems.length} atividades importadas e organizadas!`, type: "success" });
               setActiveTab('planning');
+            })
+            .catch((err) => {
+              console.error(err);
+              setNotification({ message: "Erro ao salvar os dados no Firebase.", type: "error" });
+            })
+            .finally(() => {
               setIsImporting(false);
               setImportStatus('');
-            }
-          };
-
-          saveBatch().catch((err) => {
-            console.error(err);
-            setNotification({ message: "Erro ao salvar os dados no Firebase.", type: "error" });
-            setIsImporting(false);
-            setImportStatus('');
-          });
+            });
 
         } catch (err) {
           console.error(err);

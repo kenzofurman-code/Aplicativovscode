@@ -231,6 +231,7 @@ const App = () => {
   const [userId, setUserId] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importStatus, setImportStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [notification, setNotification] = useState<any>({ message: '', type: '' });
 
@@ -390,6 +391,7 @@ const App = () => {
       if (e?.message && e.message.includes('exceeds the maximum allowed size')) {
         setNotification({ message: 'Limite de armazenamento excedido. O histórico foi truncado por segurança.', type: 'error' });
       }
+      throw e;
     }
   };
 
@@ -865,59 +867,96 @@ const App = () => {
             parsedItems = parsedItems.slice(0, 2000);
           }
 
-          const updatedTeams = Array.from(importedTeams);
-          const updatedFloorsList = Array.from(importedFloors);
-          const updatedFloorsData = cloneDeep(allFloorsData);
-          const updatedWeights = cloneDeep(weights);
-          const importedMacroKeys = new Set<string>();
+          const batchSize = 150;
+          const totalItems = parsedItems.length;
+          const totalBatches = Math.ceil(totalItems / batchSize);
+          let currentBatch = 0;
 
-          parsedItems.forEach(item => {
-            const macroKey = slugify(item.macro);
-            importedMacroKeys.add(macroKey);
-            if (!updatedFloorsData[item.floor]) updatedFloorsData[item.floor] = {};
-            if (!updatedFloorsData[item.floor][macroKey]) updatedFloorsData[item.floor][macroKey] = { title: item.macro, items: [] };
-            if (!updatedWeights[item.floor]) updatedWeights[item.floor] = {};
-            if (updatedWeights[item.floor][macroKey] === undefined) updatedWeights[item.floor][macroKey] = 1;
-            const exists = updatedFloorsData[item.floor][macroKey].items.some(it => it.name === item.service);
-            if (!exists) updatedFloorsData[item.floor][macroKey].items.push({ id: item.id, name: item.service, actualPercent: item.progress });
-          });
+          const saveBatch = async () => {
+            const endIdx = Math.min((currentBatch + 1) * batchSize, totalItems);
+            const batchParsedItems = parsedItems.slice(0, endIdx);
+            
+            const batchTeams = new Set<any>([...teams]);
+            const batchFloorsList = new Set<any>([...floors]);
+            const batchFloorsData = cloneDeep(allFloorsData);
+            const batchWeights = cloneDeep(weights);
+            const batchMacroKeys = new Set<string>();
 
-          const autoTasks = [];
-          parsedItems.forEach(item => {
-            if (item.progress > 0 && item.progress < 100) {
-              autoTasks.push({
-                id: crypto.randomUUID(), weekId: currentWeekId, floor: item.floor,
-                sectionId: slugify(item.macro), itemId: item.id,
-                activityName: item.service, responsible: item.responsible, weight: 100,
-                executedBefore: item.progress, plannedThisWeek: 100, progressThisWeek: 0,
-                finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: 'Em andamento (Importado)',
-                delayReason: '', finalized: false
-              });
-            }
-          });
+            batchParsedItems.forEach(item => {
+              const macroKey = slugify(item.macro);
+              batchMacroKeys.add(macroKey);
+              if (item.responsible && item.responsible !== 'UNDEFINED' && item.responsible !== '') {
+                batchTeams.add(item.responsible);
+              }
+              const floorName = String(item.floor || 'Térreo').trim();
+              batchFloorsList.add(floorName);
 
-          const existingMatrices = matrices.length > 0 ? matrices : [{ id: 'default_matrix', name: 'Matriz Principal', floors: [], macros: [] }];
-          const updatedMatrices = existingMatrices.map((m, idx) => idx === 0 ? {
-            ...m,
-            floors: Array.from(new Set([...(m.floors || []), ...updatedFloorsList])),
-            macros: Array.from(new Set([...(m.macros || []), ...Array.from(importedMacroKeys)]))
-          } : m);
+              if (!batchFloorsData[floorName]) batchFloorsData[floorName] = {};
+              if (!batchFloorsData[floorName][macroKey]) batchFloorsData[floorName][macroKey] = { title: item.macro, items: [] };
+              if (!batchWeights[floorName]) batchWeights[floorName] = {};
+              if (batchWeights[floorName][macroKey] === undefined) batchWeights[floorName][macroKey] = 1;
+              const exists = batchFloorsData[floorName][macroKey].items.some(it => it.name === item.service);
+              if (!exists) {
+                batchFloorsData[floorName][macroKey].items.push({ id: item.id, name: item.service, actualPercent: item.progress });
+              }
+            });
 
-          const newPlanning = [...planning, ...autoTasks];
-          const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(newPlanning, updatedFloorsData);
-          
-          saveToDB(updatedFloorsList, syncedFloors, history, updatedWeights, recalculatedPlanning, parsedItems, updatedTeams, delayReasons, ppcHistory, updatedMatrices)
-            .then(() => {
+            const batchAutoTasks = [];
+            batchParsedItems.forEach(item => {
+              if (item.progress > 0 && item.progress < 100) {
+                batchAutoTasks.push({
+                  id: crypto.randomUUID(), weekId: currentWeekId, floor: item.floor,
+                  sectionId: slugify(item.macro), itemId: item.id,
+                  activityName: item.service, responsible: item.responsible, weight: 100,
+                  executedBefore: item.progress, plannedThisWeek: 100, progressThisWeek: 0,
+                  finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: 'Em andamento (Importado)',
+                  delayReason: '', finalized: false
+                });
+              }
+            });
+
+            const existingMatrices = matrices.length > 0 ? matrices : [{ id: 'default_matrix', name: 'Matriz Principal', floors: [], macros: [] }];
+            const batchMatrices = existingMatrices.map((m, idx) => idx === 0 ? {
+              ...m,
+              floors: Array.from(new Set([...(m.floors || []), ...Array.from(batchFloorsList)])),
+              macros: Array.from(new Set([...(m.macros || []), ...Array.from(batchMacroKeys)]))
+            } : m);
+
+            const batchPlanning = [...planning, ...batchAutoTasks];
+            const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(batchPlanning, batchFloorsData);
+
+            setImportStatus(`Enviando dados para o Firebase: Lote ${currentBatch + 1} de ${totalBatches}... (${Math.round((endIdx / totalItems) * 100)}%)`);
+
+            await saveToDB(
+              Array.from(batchFloorsList),
+              syncedFloors,
+              history,
+              batchWeights,
+              recalculatedPlanning,
+              batchParsedItems,
+              Array.from(batchTeams),
+              delayReasons,
+              ppcHistory,
+              batchMatrices
+            );
+
+            currentBatch++;
+            if (currentBatch < totalBatches) {
+              setTimeout(saveBatch, 1500);
+            } else {
               setNotification({ message: `${parsedItems.length} atividades importadas e organizadas!`, type: "success" });
               setActiveTab('planning');
-            })
-            .catch((err) => {
-              console.error(err);
-              setNotification({ message: "Erro ao salvar os dados no Firebase.", type: "error" });
-            })
-            .finally(() => {
               setIsImporting(false);
-            });
+              setImportStatus('');
+            }
+          };
+
+          saveBatch().catch((err) => {
+            console.error(err);
+            setNotification({ message: "Erro ao salvar os dados no Firebase.", type: "error" });
+            setIsImporting(false);
+            setImportStatus('');
+          });
 
         } catch (err) {
           console.error(err);
@@ -1805,6 +1844,11 @@ const App = () => {
             <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
             <div>
               <h3 className="text-white font-black text-sm uppercase tracking-wider">Processando Planilha</h3>
+              {importStatus && (
+                <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-indigo-400 font-bold text-xs mt-3 animate-pulse">
+                  {importStatus}
+                </div>
+              )}
               <p className="text-[10px] text-slate-400 mt-2">Extraindo atividades e salvando no Firebase. Por favor, não feche o navegador.</p>
             </div>
           </div>

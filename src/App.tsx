@@ -230,6 +230,7 @@ const App = () => {
   const [db, setDb] = useState<any>(null);
   const [userId, setUserId] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [notification, setNotification] = useState<any>({ message: '', type: '' });
 
@@ -765,133 +766,169 @@ const App = () => {
     if (!file) return;
     if (!XLSX) { setNotification({ message: "Aguarde o carregador de planilhas.", type: "error" }); return; }
 
+    setIsImporting(true);
+
     const reader = new FileReader();
     reader.onload = (evt: any) => {
-      try {
-        const bstr = evt.target.result as string;
-        const workbook = XLSX.read(bstr, { type: 'binary' });
-        const wsname = workbook.SheetNames[0];
-        const ws = workbook.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-        
-        if (data.length < 2) { setNotification({ message: "Planilha sem linhas suficientes.", type: "error" }); return; }
-
-        let headerIndex = 3; 
-        for (let i = 0; i < Math.min(10, data.length); i++) {
-          const rowStr = (data[i] || []).join('').toLowerCase();
-          if (rowStr.includes('pacote de trabalho') || rowStr.includes('serviço') || rowStr.includes('macroatividade') || rowStr.includes('id')) {
-            headerIndex = i; break;
+      setTimeout(() => {
+        try {
+          const bstr = evt.target.result as string;
+          const workbook = XLSX.read(bstr, { type: 'binary' });
+          const wsname = workbook.SheetNames[0];
+          const ws = workbook.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+          
+          if (data.length < 2) {
+            setNotification({ message: "Planilha sem linhas suficientes.", type: "error" });
+            setIsImporting(false);
+            return;
           }
-        }
 
-        if (data.length <= headerIndex + 1) { setNotification({ message: "Não há dados abaixo da linha de cabeçalho.", type: "error" }); return; }
-
-        const headerRow = data[headerIndex].map(h => String(h || '').trim().toLowerCase());
-        const superHeaderRow = headerIndex > 0 ? data[headerIndex - 1].map(h => String(h || '').trim().toLowerCase()) : [];
-        
-        const colIdx = {
-          macro: headerRow.findIndex(h => h === 'pacote de trabalho/tarefas' || h.includes('macro') || h.includes('etapa') || h.includes('pacote')),
-          floor: headerRow.findIndex(h => h === 'lote' || h.includes('pavimento') || h.includes('local') || h.includes('pav')),
-          service: headerRow.findIndex(h => h === 'serviço' || h === 'servico' || h === 'nome da tarefa' || h.includes('item') || h.includes('atividade')),
-          duration: headerRow.findIndex(h => h === 'duração' || h === 'duracao' || h.includes('prazo') || h.includes('dias')),
-          start: headerRow.findIndex(h => h === 'data de início' || h === 'início' || h === 'inicio'),
-          end: headerRow.findIndex(h => h === 'data de término' || h === 'fim' || h === 'término' || h === 'termino'),
-          cost: headerRow.findIndex(h => h === 'custo vinculado atual' || h.includes('custo') || h.includes('valor') || h.includes('orç')),
-          responsible: headerRow.findIndex(h => h === 'responsáveis' || h.includes('respons') || h.includes('equipe') || h.includes('colaborador')),
-          progress: headerRow.findIndex((h, idx) => {
-            if (h === 'realizado' || h.includes('avanço') || h.includes('concluído') || h.includes('progresso') || h === '%') {
-              if (h === 'realizado' && superHeaderRow[idx] && superHeaderRow[idx].includes('avanço')) return true;
-              if (h !== 'realizado') return true;
+          let headerIndex = 3; 
+          for (let i = 0; i < Math.min(10, data.length); i++) {
+            const rowStr = (data[i] || []).join('').toLowerCase();
+            if (rowStr.includes('pacote de trabalho') || rowStr.includes('serviço') || rowStr.includes('macroatividade') || rowStr.includes('id')) {
+              headerIndex = i; break;
             }
-            return false;
-          })
-        };
-        if (colIdx.progress === -1) colIdx.progress = headerRow.findIndex(h => h === 'realizado' || h === '% concluído');
-
-        let parsedItems = [];
-        const importedTeams = new Set<any>([...teams]);
-        const importedFloors = new Set<any>([...floors]);
-
-        for (let i = headerIndex + 1; i < data.length; i++) {
-          const row = data[i];
-          if (!row || row.length === 0) continue;
-
-          const rawMacro = colIdx.macro !== -1 ? row[colIdx.macro] : 'ESTRUTURA';
-          const rawFloor = colIdx.floor !== -1 ? row[colIdx.floor] : 'Térreo';
-          const rawService = colIdx.service !== -1 ? row[colIdx.service] : `Atividade ${i}`;
-          const rawDuration = colIdx.duration !== -1 ? parseInt(row[colIdx.duration], 10) : 10;
-          const rawStart = parseExcelDate(colIdx.start !== -1 ? row[colIdx.start] : undefined);
-          const rawEnd = parseExcelDate(colIdx.end !== -1 ? row[colIdx.end] : undefined, rawStart);
-          const rawCost = colIdx.cost !== -1 ? parseFloat(String(row[colIdx.cost]).replace(/[^\d.-]/g, '')) : 0;
-          const rawResp = colIdx.responsible !== -1 ? String(row[colIdx.responsible] || '').trim().toUpperCase() : 'EQUIPA GERAL';
-
-          let rawProgress = 0;
-          if (colIdx.progress !== -1 && row[colIdx.progress] !== undefined) {
-            rawProgress = parsePercent(row[colIdx.progress]);
           }
 
-          if (rawResp && rawResp !== 'UNDEFINED' && rawResp !== '') importedTeams.add(rawResp);
-          const floorName = String(rawFloor || 'Térreo').trim();
-          importedFloors.add(floorName);
+          if (data.length <= headerIndex + 1) {
+            setNotification({ message: "Não há dados abaixo da linha de cabeçalho.", type: "error" });
+            setIsImporting(false);
+            return;
+          }
 
-          parsedItems.push({
-            id: `xls_${Date.now()}_${i}`, macro: String(rawMacro || 'ESTRUTURA').trim().toUpperCase(),
-            floor: floorName, service: String(rawService || '').trim().toUpperCase(),
-            duration: isNaN(rawDuration) ? 5 : rawDuration, start: rawStart, end: rawEnd,
-            cost: isNaN(rawCost) ? 0 : rawCost, responsible: rawResp || 'EQUIPA GERAL', progress: clampPercent(rawProgress)
-          });
-        }
+          const headerRow = data[headerIndex].map(h => String(h || '').trim().toLowerCase());
+          const superHeaderRow = headerIndex > 0 ? data[headerIndex - 1].map(h => String(h || '').trim().toLowerCase()) : [];
+          
+          const colIdx = {
+            macro: headerRow.findIndex(h => h === 'pacote de trabalho/tarefas' || h.includes('macro') || h.includes('etapa') || h.includes('pacote')),
+            floor: headerRow.findIndex(h => h === 'lote' || h.includes('pavimento') || h.includes('local') || h.includes('pav')),
+            service: headerRow.findIndex(h => h === 'serviço' || h === 'servico' || h === 'nome da tarefa' || h.includes('item') || h.includes('atividade')),
+            duration: headerRow.findIndex(h => h === 'duração' || h === 'duracao' || h.includes('prazo') || h.includes('dias')),
+            start: headerRow.findIndex(h => h === 'data de início' || h === 'início' || h === 'inicio'),
+            end: headerRow.findIndex(h => h === 'data de término' || h === 'fim' || h === 'término' || h === 'termino'),
+            cost: headerRow.findIndex(h => h === 'custo vinculado atual' || h.includes('custo') || h.includes('valor') || h.includes('orç')),
+            responsible: headerRow.findIndex(h => h === 'responsáveis' || h.includes('respons') || h.includes('equipe') || h.includes('colaborador')),
+            progress: headerRow.findIndex((h, idx) => {
+              if (h === 'realizado' || h.includes('avanço') || h.includes('concluído') || h.includes('progresso') || h === '%') {
+                if (h === 'realizado' && superHeaderRow[idx] && superHeaderRow[idx].includes('avanço')) return true;
+                if (h !== 'realizado') return true;
+              }
+              return false;
+            })
+          };
+          if (colIdx.progress === -1) colIdx.progress = headerRow.findIndex(h => h === 'realizado' || h === '% concluído');
 
-        if (parsedItems.length === 0) { setNotification({ message: "Não foi possível extrair nenhum serviço.", type: "error" }); return; }
-        if (parsedItems.length > 10000) { setNotification({ message: `Aviso: Importadas apenas 10000 linhas.`, type: "error" }); parsedItems = parsedItems.slice(0, 10000); }
+          let parsedItems = [];
+          const importedTeams = new Set<any>([...teams]);
+          const importedFloors = new Set<any>([...floors]);
 
-        const updatedTeams = Array.from(importedTeams);
-        const updatedFloorsList = Array.from(importedFloors);
-        const updatedFloorsData = cloneDeep(allFloorsData);
-        const updatedWeights = cloneDeep(weights);
-        const importedMacroKeys = new Set<string>();
+          for (let i = headerIndex + 1; i < data.length; i++) {
+            const row = data[i];
+            if (!row || row.length === 0) continue;
 
-        parsedItems.forEach(item => {
-          const macroKey = slugify(item.macro);
-          importedMacroKeys.add(macroKey);
-          if (!updatedFloorsData[item.floor]) updatedFloorsData[item.floor] = {};
-          if (!updatedFloorsData[item.floor][macroKey]) updatedFloorsData[item.floor][macroKey] = { title: item.macro, items: [] };
-          if (!updatedWeights[item.floor]) updatedWeights[item.floor] = {};
-          if (updatedWeights[item.floor][macroKey] === undefined) updatedWeights[item.floor][macroKey] = 1;
-          const exists = updatedFloorsData[item.floor][macroKey].items.some(it => it.name === item.service);
-          if (!exists) updatedFloorsData[item.floor][macroKey].items.push({ id: item.id, name: item.service, actualPercent: item.progress });
-        });
+            const rawMacro = colIdx.macro !== -1 ? row[colIdx.macro] : 'ESTRUTURA';
+            const rawFloor = colIdx.floor !== -1 ? row[colIdx.floor] : 'Térreo';
+            const rawService = colIdx.service !== -1 ? row[colIdx.service] : `Atividade ${i}`;
+            const rawDuration = colIdx.duration !== -1 ? parseInt(row[colIdx.duration], 10) : 10;
+            const rawStart = parseExcelDate(colIdx.start !== -1 ? row[colIdx.start] : undefined);
+            const rawEnd = parseExcelDate(colIdx.end !== -1 ? row[colIdx.end] : undefined, rawStart);
+            const rawCost = colIdx.cost !== -1 ? parseFloat(String(row[colIdx.cost]).replace(/[^\d.-]/g, '')) : 0;
+            const rawResp = colIdx.responsible !== -1 ? String(row[colIdx.responsible] || '').trim().toUpperCase() : 'EQUIPA GERAL';
 
-        const autoTasks = [];
-        parsedItems.forEach(item => {
-          if (item.progress > 0 && item.progress < 100) {
-            autoTasks.push({
-              id: crypto.randomUUID(), weekId: currentWeekId, floor: item.floor,
-              sectionId: slugify(item.macro), itemId: item.id,
-              activityName: item.service, responsible: item.responsible, weight: 100,
-              executedBefore: item.progress, plannedThisWeek: 100, progressThisWeek: 0,
-              finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: 'Em andamento (Importado)',
-              delayReason: '', finalized: false
+            let rawProgress = 0;
+            if (colIdx.progress !== -1 && row[colIdx.progress] !== undefined) {
+              rawProgress = parsePercent(row[colIdx.progress]);
+            }
+
+            if (rawResp && rawResp !== 'UNDEFINED' && rawResp !== '') importedTeams.add(rawResp);
+            const floorName = String(rawFloor || 'Térreo').trim();
+            importedFloors.add(floorName);
+
+            parsedItems.push({
+              id: `xls_${Date.now()}_${i}`, macro: String(rawMacro || 'ESTRUTURA').trim().toUpperCase(),
+              floor: floorName, service: String(rawService || '').trim().toUpperCase(),
+              duration: isNaN(rawDuration) ? 5 : rawDuration, start: rawStart, end: rawEnd,
+              cost: isNaN(rawCost) ? 0 : rawCost, responsible: rawResp || 'EQUIPA GERAL', progress: clampPercent(rawProgress)
             });
           }
-        });
 
-        const existingMatrices = matrices.length > 0 ? matrices : [{ id: 'default_matrix', name: 'Matriz Principal', floors: [], macros: [] }];
-        const updatedMatrices = existingMatrices.map((m, idx) => idx === 0 ? {
-          ...m,
-          floors: Array.from(new Set([...(m.floors || []), ...updatedFloorsList])),
-          macros: Array.from(new Set([...(m.macros || []), ...Array.from(importedMacroKeys)]))
-        } : m);
+          if (parsedItems.length === 0) {
+            setNotification({ message: "Não foi possível extrair nenhum serviço.", type: "error" });
+            setIsImporting(false);
+            return;
+          }
+          
+          if (parsedItems.length > 2000) {
+            setNotification({ message: `Limite de segurança: Importados apenas os primeiros 2000 serviços.`, type: "error" });
+            parsedItems = parsedItems.slice(0, 2000);
+          }
 
-        const newPlanning = [...planning, ...autoTasks];
-        const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(newPlanning, updatedFloorsData);
-        saveToDB(updatedFloorsList, syncedFloors, history, updatedWeights, recalculatedPlanning, parsedItems, updatedTeams, delayReasons, ppcHistory, updatedMatrices);
-        setNotification({ message: `${parsedItems.length} atividades importadas e organizadas!`, type: "success" });
-        setActiveTab('planning');
-      } catch (err) {
-        console.error(err);
-        setNotification({ message: "Falha ao analisar a planilha Excel.", type: "error" });
-      }
+          const updatedTeams = Array.from(importedTeams);
+          const updatedFloorsList = Array.from(importedFloors);
+          const updatedFloorsData = cloneDeep(allFloorsData);
+          const updatedWeights = cloneDeep(weights);
+          const importedMacroKeys = new Set<string>();
+
+          parsedItems.forEach(item => {
+            const macroKey = slugify(item.macro);
+            importedMacroKeys.add(macroKey);
+            if (!updatedFloorsData[item.floor]) updatedFloorsData[item.floor] = {};
+            if (!updatedFloorsData[item.floor][macroKey]) updatedFloorsData[item.floor][macroKey] = { title: item.macro, items: [] };
+            if (!updatedWeights[item.floor]) updatedWeights[item.floor] = {};
+            if (updatedWeights[item.floor][macroKey] === undefined) updatedWeights[item.floor][macroKey] = 1;
+            const exists = updatedFloorsData[item.floor][macroKey].items.some(it => it.name === item.service);
+            if (!exists) updatedFloorsData[item.floor][macroKey].items.push({ id: item.id, name: item.service, actualPercent: item.progress });
+          });
+
+          const autoTasks = [];
+          parsedItems.forEach(item => {
+            if (item.progress > 0 && item.progress < 100) {
+              autoTasks.push({
+                id: crypto.randomUUID(), weekId: currentWeekId, floor: item.floor,
+                sectionId: slugify(item.macro), itemId: item.id,
+                activityName: item.service, responsible: item.responsible, weight: 100,
+                executedBefore: item.progress, plannedThisWeek: 100, progressThisWeek: 0,
+                finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: 'Em andamento (Importado)',
+                delayReason: '', finalized: false
+              });
+            }
+          });
+
+          const existingMatrices = matrices.length > 0 ? matrices : [{ id: 'default_matrix', name: 'Matriz Principal', floors: [], macros: [] }];
+          const updatedMatrices = existingMatrices.map((m, idx) => idx === 0 ? {
+            ...m,
+            floors: Array.from(new Set([...(m.floors || []), ...updatedFloorsList])),
+            macros: Array.from(new Set([...(m.macros || []), ...Array.from(importedMacroKeys)]))
+          } : m);
+
+          const newPlanning = [...planning, ...autoTasks];
+          const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(newPlanning, updatedFloorsData);
+          
+          saveToDB(updatedFloorsList, syncedFloors, history, updatedWeights, recalculatedPlanning, parsedItems, updatedTeams, delayReasons, ppcHistory, updatedMatrices)
+            .then(() => {
+              setNotification({ message: `${parsedItems.length} atividades importadas e organizadas!`, type: "success" });
+              setActiveTab('planning');
+            })
+            .catch((err) => {
+              console.error(err);
+              setNotification({ message: "Erro ao salvar os dados no Firebase.", type: "error" });
+            })
+            .finally(() => {
+              setIsImporting(false);
+            });
+
+        } catch (err) {
+          console.error(err);
+          setNotification({ message: "Falha ao analisar a planilha Excel.", type: "error" });
+          setIsImporting(false);
+        }
+      }, 100);
+    };
+    reader.onerror = () => {
+      setNotification({ message: "Erro ao ler o arquivo.", type: "error" });
+      setIsImporting(false);
     };
     reader.readAsBinaryString(file);
   };
@@ -1638,6 +1675,17 @@ const App = () => {
     </div>
   );
 
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white font-sans">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-bold tracking-widest text-indigo-200 uppercase animate-pulse">Carregando dados do Firebase...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 relative overflow-x-hidden">
       <header className="bg-slate-900 p-4 text-white shadow-xl sticky top-0 z-40">
@@ -1745,6 +1793,19 @@ const App = () => {
             </div>
             <div className="mt-6 flex justify-end">
               <button onClick={() => setMatrixSelection({ isOpen: false, matrixId: '', type: 'macro' })} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition">FECHAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Importing Loader Spinner Modal */}
+      {isImporting && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300">
+          <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center space-y-6 max-w-sm text-center">
+            <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <div>
+              <h3 className="text-white font-black text-sm uppercase tracking-wider">Processando Planilha</h3>
+              <p className="text-[10px] text-slate-400 mt-2">Extraindo atividades e salvando no Firebase. Por favor, não feche o navegador.</p>
             </div>
           </div>
         </div>

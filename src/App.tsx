@@ -510,11 +510,32 @@ const App = () => {
         if (!selectedDashboardFloor || !loadedFloors.includes(selectedDashboardFloor)) setSelectedDashboardFloor(loadedFloors[0]);
         setLastUpdatedTime(formatTimestamp(d.lastUpdated));
 
-        
-        setAllFloorsData(d.data && Object.keys(d.data).length > 0 ? d.data : INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: cloneDeep(INITIAL_STRUCTURE) }), {}));
+        let loadedData = d.data;
+        if (typeof loadedData === 'string') {
+          try {
+            loadedData = JSON.parse(loadedData);
+          } catch (jsonErr) {
+            console.error("Error parsing floors data JSON:", jsonErr);
+            loadedData = {};
+          }
+        }
+        const finalData = loadedData && Object.keys(loadedData).length > 0 ? loadedData : INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: cloneDeep(INITIAL_STRUCTURE) }), {});
+        setAllFloorsData(finalData);
+
         setHistory(d.history || []);
         setWeights(d.weights || {});
-        setPlanning(d.planning || []);
+
+        let loadedPlanning = d.planning || [];
+        if (typeof loadedPlanning === 'string') {
+          try {
+            loadedPlanning = JSON.parse(loadedPlanning);
+          } catch (jsonErr) {
+            console.error("Error parsing planning JSON:", jsonErr);
+            loadedPlanning = [];
+          }
+        }
+        setPlanning(loadedPlanning);
+
         let loadedCrono = d.cronogramaInicial || INITIAL_CRONOGRAMA;
         if (typeof loadedCrono === 'string') {
           try {
@@ -530,7 +551,7 @@ const App = () => {
         setPpcHistory(d.ppcHistory || []);
 
         const loadedMatrices = d.matrices && d.matrices.length > 0 ? d.matrices : [{
-          id: 'default_matrix', name: 'Matriz Principal', floors: loadedFloors, macros: Object.keys(d.data?.[loadedFloors[0]] || {})
+          id: 'default_matrix', name: 'Matriz Principal', floors: loadedFloors, macros: Object.keys(finalData?.[loadedFloors[0]] || {})
         }];
         setMatrices(loadedMatrices);
       } else {
@@ -558,10 +579,10 @@ const App = () => {
     try {
       await setDoc(docRef, { 
         floors: Array.isArray(fls) ? fls : [],
-        data: data || {},
+        data: typeof data === 'string' ? data : JSON.stringify(data || {}),
         history: trimmedHistory,
         weights: wts || {},
-        planning: Array.isArray(plans) ? plans : [],
+        planning: typeof plans === 'string' ? plans : JSON.stringify(plans || []),
         cronogramaInicial: JSON.stringify(Array.isArray(serializedCrono) ? serializedCrono.slice(0, 5500) : []),
         teams: Array.isArray(tms) ? tms : INITIAL_TEAMS,
         delayReasons: Array.isArray(delays) ? delays : INITIAL_DELAYS,

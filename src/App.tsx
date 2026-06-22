@@ -91,6 +91,23 @@ const formatDateBR = (isoString) => {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('pt-BR');
 };
 
+const formatTimestamp = (ts) => {
+  if (!ts) return '';
+  let date;
+  if (typeof ts.toDate === 'function') {
+    date = ts.toDate();
+  } else if (ts instanceof Date) {
+    date = ts;
+  } else if (ts && typeof ts === 'object' && ts.seconds !== undefined) {
+    date = new Date(ts.seconds * 1000);
+  } else {
+    date = new Date(ts);
+  }
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString('pt-BR');
+};
+
+
 // --- Componente Inteligente: Selecionador de Dias Arrastável ---
 const DaysSelector = ({ dailyWork, disabled, onChange }) => {
   const [localDW, setLocalDW] = useState(dailyWork || [0, 0, 0, 0, 0]);
@@ -385,6 +402,14 @@ const App = () => {
   // Dashboard Interatividade
   const [dashboardTargetMonth, setDashboardTargetMonth] = useState<string>(getTodayDateString().slice(0, 7));
   const [selectedDashboardFloor, setSelectedDashboardFloor] = useState<any>('');
+  const [dashboardShowOnlyScheduled, setDashboardShowOnlyScheduled] = useState<boolean>(true);
+  const [selectedDashboardMacros, setSelectedDashboardMacros] = useState<string[]>([]);
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
+
+  useEffect(() => {
+    setSelectedDashboardMacros([]);
+  }, [selectedDashboardFloor]);
+
 
   // Drawer Menu
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
@@ -451,8 +476,10 @@ const App = () => {
         const d = snap.data();
         const loadedFloors = Array.isArray(d.floors) && d.floors.length > 0 ? d.floors : INITIAL_PAVIMENTOS;
         setFloors(loadedFloors);
-        if (!activeFloor) setActiveFloor(loadedFloors[0]);
-        if (!selectedDashboardFloor) setSelectedDashboardFloor(loadedFloors[0]);
+        if (!activeFloor || !loadedFloors.includes(activeFloor)) setActiveFloor(loadedFloors[0]);
+        if (!selectedDashboardFloor || !loadedFloors.includes(selectedDashboardFloor)) setSelectedDashboardFloor(loadedFloors[0]);
+        setLastUpdatedTime(formatTimestamp(d.lastUpdated));
+
         
         setAllFloorsData(d.data && Object.keys(d.data).length > 0 ? d.data : INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: cloneDeep(INITIAL_STRUCTURE) }), {}));
         setHistory(d.history || []);
@@ -540,7 +567,10 @@ const App = () => {
   const dashboardStats = useMemo(() => {
     if (!dashboardTargetMonth) return { totalActual: 0, totalExpected: 0, floorsData: [] };
     const [yyyy, mm] = dashboardTargetMonth.split('-');
-    const targetDate = new Date(parseInt(yyyy), parseInt(mm), 0, 23, 59, 59);
+    const year = parseInt(yyyy);
+    const month = parseInt(mm) - 1;
+    const startOfMonth = new Date(year, month, 1, 0, 0, 0, 0);
+    const targetDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
     const floorsArr = [];
     let totalProjActual = 0;
@@ -562,11 +592,14 @@ const App = () => {
         let macroActualSum = 0;
         let macroExpectedSum = 0;
         let numItems = sec.items?.length || 0;
+        let hasAnyScheduledItem = false;
 
         if (numItems > 0) {
           sec.items.forEach(item => {
             macroActualSum += (item.actualPercent || 0);
-            const cronoItem = cronogramaInicial.find(c => c.id === item.id);
+            const cronoItem = cronogramaInicial.find(c => c.id === item.id) ||
+              cronogramaInicial.find(c => c.floor === fKey && slugify(c.macro) === sKey && c.service.toUpperCase() === item.name.toUpperCase());
+            
             let expected = 0;
             if (cronoItem && cronoItem.start && cronoItem.end) {
               const s = new Date(cronoItem.start);
@@ -578,6 +611,12 @@ const App = () => {
                 const elapsedMs = targetDate.getTime() - s.getTime();
                 expected = totalMs > 0 ? (elapsedMs / totalMs) * 100 : 100;
               }
+
+              const itemStart = new Date(cronoItem.start);
+              const itemEnd = new Date(cronoItem.end);
+              if (itemStart <= targetDate && itemEnd >= startOfMonth) {
+                hasAnyScheduledItem = true;
+              }
             }
             macroExpectedSum += expected;
           });
@@ -588,7 +627,13 @@ const App = () => {
         floorActualSum += (macroActual * weight) / 100;
         floorExpectedSum += (macroExpected * weight) / 100;
 
-        macrosArr.push({ id: sKey, title: sec.title || getMacroTitle(sKey), actual: macroActual, expected: macroExpected });
+        macrosArr.push({ 
+          id: sKey, 
+          title: sec.title || getMacroTitle(sKey), 
+          actual: macroActual, 
+          expected: macroExpected,
+          isScheduledInMonth: hasAnyScheduledItem
+        });
       });
 
       const floorActual = weightSum > 0 ? (floorActualSum / weightSum) * 100 : 0;
@@ -604,6 +649,25 @@ const App = () => {
       floorsData: floorsArr
     };
   }, [allFloorsData, weights, floors, cronogramaInicial, dashboardTargetMonth]);
+
+  const allMacrosForSelectedFloor = useMemo(() => {
+    if (!selectedDashboardFloor) return [];
+    const floorStats = dashboardStats.floorsData.find(f => f.floor === selectedDashboardFloor);
+    return floorStats ? floorStats.macros : [];
+  }, [dashboardStats, selectedDashboardFloor]);
+
+  const macrosToDisplay = useMemo(() => {
+    let list = allMacrosForSelectedFloor;
+    if (dashboardShowOnlyScheduled) {
+      list = list.filter(m => m.isScheduledInMonth);
+    }
+    if (selectedDashboardMacros.length > 0) {
+      list = list.filter(m => selectedDashboardMacros.includes(m.id));
+    }
+    return list;
+  }, [allMacrosForSelectedFloor, dashboardShowOnlyScheduled, selectedDashboardMacros]);
+
+
 
   const delayStats = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -623,13 +687,22 @@ const App = () => {
 
   const availableFloorsForMacro = useMemo(() => {
     if (!drawerMacro) return [];
-    return Array.from(new Set(cronogramaInicial.filter(item => slugify(item.macro) === drawerMacro).map(item => item.floor))).filter(Boolean);
+    return Array.from(new Set(
+      cronogramaInicial
+        .filter(item => slugify(item.macro) === drawerMacro && (item.progress ?? 0) < 100)
+        .map(item => item.floor)
+    )).filter(Boolean);
   }, [cronogramaInicial, drawerMacro]);
 
   const availableServicesForMacroAndFloors = useMemo(() => {
     if (!drawerMacro || drawerFloors.length === 0) return [];
-    return cronogramaInicial.filter(item => slugify(item.macro) === drawerMacro && drawerFloors.includes(item.floor));
+    return cronogramaInicial.filter(item => 
+      slugify(item.macro) === drawerMacro && 
+      drawerFloors.includes(item.floor) &&
+      (item.progress ?? 0) < 100
+    );
   }, [cronogramaInicial, drawerMacro, drawerFloors]);
+
 
   const currentWeekId = toLocalDateString(currentWeekStart);
   const weeklyTasks = planning.filter(t => t.weekId === currentWeekId);
@@ -965,8 +1038,9 @@ const App = () => {
             const floorName = String(rawFloor || 'Térreo').trim();
             importedFloors.add(floorName);
 
+            const itemKey = `xls_${slugify(floorName)}_${slugify(rawMacro)}_${slugify(rawService)}`;
             parsedItems.push({
-              id: `xls_${Date.now()}_${i}`, 
+              id: itemKey, 
               macro: String(rawMacro || 'ESTRUTURA').trim().toUpperCase(),
               floor: floorName, 
               service: rawService.toUpperCase(),
@@ -978,6 +1052,7 @@ const App = () => {
               progress: clampPercent(rawProgress)
             });
           }
+
 
           if (parsedItems.length === 0) {
             setNotification({ message: "Não foi possível extrair nenhum serviço.", type: "error" });
@@ -1022,10 +1097,14 @@ const App = () => {
             if (!updatedFloorsData[item.floor][macroKey]) updatedFloorsData[item.floor][macroKey] = { title: item.macro, items: [] };
             if (!updatedWeights[item.floor]) updatedWeights[item.floor] = {};
             if (updatedWeights[item.floor][macroKey] === undefined) updatedWeights[item.floor][macroKey] = 1;
-            const exists = updatedFloorsData[item.floor][macroKey].items.some(it => it.name === item.service);
-            if (!exists) {
+            const existingItemIndex = updatedFloorsData[item.floor][macroKey].items.findIndex(it => it.name.toUpperCase() === item.service.toUpperCase());
+            if (existingItemIndex !== -1) {
+              updatedFloorsData[item.floor][macroKey].items[existingItemIndex].id = item.id;
+              updatedFloorsData[item.floor][macroKey].items[existingItemIndex].actualPercent = item.progress;
+            } else {
               updatedFloorsData[item.floor][macroKey].items.push({ id: item.id, name: item.service, actualPercent: item.progress });
             }
+
           });
 
           const autoTasks = [];
@@ -1313,10 +1392,50 @@ const App = () => {
               <div className="h-full flex items-center justify-center text-[10px] font-bold text-slate-400 uppercase italic">Selecione um pavimento ao lado</div>
             ) : (
               <>
-                <h4 className="text-[10px] font-black uppercase text-slate-700 mb-4 text-center">Detalhamento: {selectedDashboardFloor}</h4>
-                <div className="flex items-end justify-around h-48 gap-2">
-                  {dashboardStats.floorsData.find(f => f.floor === selectedDashboardFloor)?.macros.map((m, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-2 group relative">
+                <h4 className="text-[10px] font-black uppercase text-slate-700 mb-2 text-center">Detalhamento: {selectedDashboardFloor}</h4>
+                
+                {/* Filtros de Pacotes */}
+                <div className="space-y-2 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <div className="flex items-center">
+                    <label className="flex items-center space-x-1.5 cursor-pointer select-none text-[9px] font-black text-slate-600 uppercase">
+                      <input 
+                        type="checkbox" 
+                        checked={dashboardShowOnlyScheduled} 
+                        onChange={e => setDashboardShowOnlyScheduled(e.target.checked)} 
+                        className="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span>Apenas Previstos no Mês</span>
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto pr-1 custom-scrollbar">
+                    {allMacrosForSelectedFloor.map(m => {
+                      const isSelected = selectedDashboardMacros.includes(m.id);
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedDashboardMacros(selectedDashboardMacros.filter(id => id !== m.id));
+                            } else {
+                              setSelectedDashboardMacros([...selectedDashboardMacros, m.id]);
+                            }
+                          }}
+                          className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition border ${
+                            isSelected 
+                              ? 'bg-indigo-600 border-indigo-600 text-white' 
+                              : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'
+                          }`}
+                        >
+                          {m.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-end justify-start h-48 gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                  {macrosToDisplay.map((m, i) => (
+                    <div key={i} className="flex-shrink-0 w-14 flex flex-col items-center gap-2 group relative">
                       <div className="opacity-0 group-hover:opacity-100 absolute -top-10 bg-slate-800 text-white text-[9px] px-2 py-1 rounded transition-opacity whitespace-nowrap z-20 shadow-lg pointer-events-none">
                         {m.actual.toFixed(1)}% / {m.expected.toFixed(1)}%
                       </div>
@@ -1327,11 +1446,17 @@ const App = () => {
                       <span className="text-[8px] font-bold text-slate-500 truncate w-full text-center" title={m.title}>{m.title}</span>
                     </div>
                   ))}
+                  {macrosToDisplay.length === 0 && (
+                    <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400 uppercase italic">
+                      Nenhuma macro correspondente
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-center gap-4 mt-6">
                   <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-emerald-500 rounded-sm"></div><span className="text-[9px] font-bold text-slate-500">Realizado</span></div>
                   <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-indigo-100 border-2 border-indigo-400 rounded-sm"></div><span className="text-[9px] font-bold text-slate-500">Previsão Acumulada</span></div>
                 </div>
+
               </>
             )}
           </div>
@@ -1394,8 +1519,29 @@ const App = () => {
   const renderCronograma = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200">
-        <h2 className="text-lg font-black text-indigo-900 uppercase tracking-tight mb-2">Importação Directa de Planilha</h2>
-        <p className="text-xs text-slate-500 mb-6">Carregue o seu ficheiro de planeamento gerado pelo seu software (Excel ou CSV). <br />O sistema localiza automaticamente os cabeçalhos (ex: Linha 4) e mapeia colunas como "Pacote de trabalho", "Lote" e "Serviço".</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+          <div>
+            <h2 className="text-lg font-black text-indigo-900 uppercase tracking-tight mb-1">Importação Directa de Planilha</h2>
+            <p className="text-xs text-slate-500">Carregue o seu ficheiro de planeamento gerado pelo seu software (Excel ou CSV).</p>
+          </div>
+          <button 
+            onClick={() => triggerConfirm(
+              'Limpar Banco de Dados', 
+              'Deseja realmente limpar toda a base de dados do cronograma, metas e painéis? Esta ação não pode ser desfeita e redefinirá o projeto.', 
+              async () => {
+                const initialData = INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: cloneDeep(INITIAL_STRUCTURE) }), {});
+                const initialWeights = INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: { estrutura: 50, instalacoes: 50 } }), {});
+                const initialMatrices = [{ id: 'default_matrix', name: 'Matriz Principal', floors: INITIAL_PAVIMENTOS, macros: Object.keys(INITIAL_STRUCTURE) }];
+                await saveToDB(INITIAL_PAVIMENTOS, initialData, [], initialWeights, [], [], INITIAL_TEAMS, INITIAL_DELAYS, [], initialMatrices);
+                setNotification({ message: 'Base de dados limpa com sucesso!', type: 'success' });
+              }
+            )}
+            className="px-4 py-2 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 font-black rounded-xl text-xs uppercase tracking-wider transition active:scale-95 whitespace-nowrap"
+          >
+            🗑️ Limpar BD
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 mb-6">O sistema localiza automaticamente os cabeçalhos (ex: Linha 4) e mapeia colunas como "Pacote de trabalho", "Lote" e "Serviço".</p>
         <div className="border-2 border-dashed border-slate-300 rounded-2xl p-8 bg-slate-50 flex flex-col items-center justify-center text-center cursor-pointer hover:border-indigo-500 transition relative">
           <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
           <span className="text-4xl mb-2">📊</span>
@@ -1404,7 +1550,14 @@ const App = () => {
         </div>
       </div>
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200">
-        <h3 className="text-sm font-black text-slate-800 uppercase mb-4">Atividades do Cronograma Ativo ({cronogramaInicial.length})</h3>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
+          <h3 className="text-sm font-black text-slate-800 uppercase">Atividades do Cronograma Ativo ({cronogramaInicial.length})</h3>
+          {lastUpdatedTime && (
+            <span className="text-[10px] font-bold text-slate-500 uppercase">
+              Última Importação: <strong className="text-indigo-600">{lastUpdatedTime}</strong>
+            </span>
+          )}
+        </div>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-800 text-white uppercase text-[9px] tracking-wider">
@@ -1414,6 +1567,7 @@ const App = () => {
                 <th className="p-3">Serviço</th>
                 <th className="p-3 text-center">Dias</th>
                 <th className="p-3 text-center">Fim Planeado</th>
+                <th className="p-3 text-center">Último Realizado</th>
                 <th className="p-3 text-center">Equipa Associada</th>
                 <th className="p-3 text-right">Custo Estimado</th>
               </tr>
@@ -1426,6 +1580,7 @@ const App = () => {
                   <td className="p-3 font-bold text-slate-800">{item.service}</td>
                   <td className="p-3 text-center text-slate-500">{item.duration}</td>
                   <td className="p-3 text-center text-slate-500">{formatDateBR(item.end)}</td>
+                  <td className="p-3 text-center font-bold text-slate-700">{item.progress ?? 0}%</td>
                   <td className="p-3 text-center"><span className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-black text-slate-600">{item.responsible || 'EQUIPA GERAL'}</span></td>
                   <td className="p-3 text-right text-emerald-600 font-mono">R$ {item.cost?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                 </tr>
@@ -1436,6 +1591,7 @@ const App = () => {
       </div>
     </div>
   );
+
 
   const renderPlanning = () => (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">

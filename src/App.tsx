@@ -15,6 +15,112 @@ declare global {
 }
 
 // --- Utilitários de Data e Dados ---
+const toSafeChar = (code: number): string => {
+  if (code >= 55296) {
+    return String.fromCodePoint(code + 2048);
+  }
+  return String.fromCodePoint(code);
+};
+
+const fromSafeChar = (char: string): number => {
+  const code = char.codePointAt(0) || 0;
+  if (code >= 55296 + 2048) {
+    return code - 2048;
+  }
+  return code;
+};
+
+const compressString = (str: string): string => {
+  if (!str) return '';
+  let dictionary: { [key: string]: number } = {};
+  const initDict = () => {
+    dictionary = {};
+    for (let i = 0; i < 256; i++) {
+      dictionary[String.fromCodePoint(i)] = i;
+    }
+  };
+  initDict();
+  let word = '';
+  const result: number[] = [];
+  let dictSize = 256;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charAt(i);
+    const wc = word + char;
+    if (Object.prototype.hasOwnProperty.call(dictionary, wc)) {
+      word = wc;
+    } else {
+      result.push(dictionary[word]);
+      if (dictSize < 65000) {
+        dictionary[wc] = dictSize++;
+      } else {
+        initDict();
+        dictSize = 256;
+      }
+      word = char;
+    }
+  }
+  if (word !== '') {
+    result.push(dictionary[word]);
+  }
+  return result.map(toSafeChar).join('');
+};
+
+const decompressString = (compressedStr: string): string => {
+  if (!compressedStr) return '';
+  let dictionary: { [key: number]: string } = {};
+  const initDict = () => {
+    dictionary = {};
+    for (let i = 0; i < 256; i++) {
+      dictionary[i] = String.fromCodePoint(i);
+    }
+  };
+  initDict();
+  const chars = Array.from(compressedStr);
+  if (chars.length === 0) return '';
+  let word = chars[0];
+  let result = word;
+  let entry = '';
+  let dictSize = 256;
+  for (let i = 1; i < chars.length; i++) {
+    const code = fromSafeChar(chars[i]);
+    if (dictionary[code]) {
+      entry = dictionary[code];
+    } else {
+      if (code === dictSize) {
+        entry = word + word.charAt(0);
+      } else {
+        return '';
+      }
+    }
+    result += entry;
+    if (dictSize < 65000) {
+      dictionary[dictSize++] = word + entry.charAt(0);
+    } else {
+      initDict();
+      dictSize = 256;
+    }
+    word = entry;
+  }
+  return result;
+};
+
+const decompressIfNeeded = (val: any): string => {
+  if (typeof val !== 'string') return val;
+  const trimmed = val.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    return val;
+  }
+  try {
+    const decompressed = decompressString(val);
+    if (decompressed && (decompressed.startsWith('{') || decompressed.startsWith('['))) {
+      return decompressed;
+    }
+  } catch (e) {
+    console.error("Decompression check error:", e);
+  }
+  return val;
+};
+
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? {}));
 
 const slugify = (value) => String(value || '')
@@ -513,7 +619,7 @@ const App = () => {
         let loadedData = d.data;
         if (typeof loadedData === 'string') {
           try {
-            loadedData = JSON.parse(loadedData);
+            loadedData = JSON.parse(decompressIfNeeded(loadedData));
           } catch (jsonErr) {
             console.error("Error parsing floors data JSON:", jsonErr);
             loadedData = {};
@@ -528,7 +634,7 @@ const App = () => {
         let loadedPlanning = d.planning || [];
         if (typeof loadedPlanning === 'string') {
           try {
-            loadedPlanning = JSON.parse(loadedPlanning);
+            loadedPlanning = JSON.parse(decompressIfNeeded(loadedPlanning));
           } catch (jsonErr) {
             console.error("Error parsing planning JSON:", jsonErr);
             loadedPlanning = [];
@@ -539,7 +645,7 @@ const App = () => {
         let loadedCrono = d.cronogramaInicial || INITIAL_CRONOGRAMA;
         if (typeof loadedCrono === 'string') {
           try {
-            loadedCrono = JSON.parse(loadedCrono);
+            loadedCrono = JSON.parse(decompressIfNeeded(loadedCrono));
           } catch (jsonErr) {
             console.error("Error parsing cronogramaInicial JSON:", jsonErr);
             loadedCrono = [];
@@ -577,13 +683,17 @@ const App = () => {
     const syncedCrono = syncCronogramaWithFloorsData(crono, fls, data);
     const serializedCrono = serializeCrono(syncedCrono);
     try {
+      const dataStr = typeof data === 'string' ? data : JSON.stringify(data || {});
+      const planningStr = typeof plans === 'string' ? plans : JSON.stringify(plans || []);
+      const cronoStr = JSON.stringify(Array.isArray(serializedCrono) ? serializedCrono.slice(0, 5500) : []);
+
       await setDoc(docRef, { 
         floors: Array.isArray(fls) ? fls : [],
-        data: typeof data === 'string' ? data : JSON.stringify(data || {}),
+        data: compressString(dataStr),
         history: trimmedHistory,
         weights: wts || {},
-        planning: typeof plans === 'string' ? plans : JSON.stringify(plans || []),
-        cronogramaInicial: JSON.stringify(Array.isArray(serializedCrono) ? serializedCrono.slice(0, 5500) : []),
+        planning: compressString(planningStr),
+        cronogramaInicial: compressString(cronoStr),
         teams: Array.isArray(tms) ? tms : INITIAL_TEAMS,
         delayReasons: Array.isArray(delays) ? delays : INITIAL_DELAYS,
         ppcHistory: Array.isArray(ppcHist) ? ppcHist.slice(-260) : [],

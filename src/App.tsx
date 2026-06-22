@@ -233,7 +233,7 @@ const roundDown25 = (value) => {
   return 0;
 };
 
-const syncPlanningAndPhysical = (currentPlanning, floorsData) => {
+const syncPlanningAndPhysical = (currentPlanning, floorsData, cronogramaInicial = []) => {
   const sortedPlanning = [...currentPlanning].sort((a, b) => a.weekId.localeCompare(b.weekId));
   const cumulativeProgress = {};
   
@@ -248,17 +248,41 @@ const syncPlanningAndPhysical = (currentPlanning, floorsData) => {
   });
 
   const updatedFloorsData = cloneDeep(floorsData);
+  
+  // Mapear avanços realizados do planejamento
   Object.keys(cumulativeProgress).forEach(key => {
     const [floor, sectionId, itemId] = key.split('||');
     if (updatedFloorsData[floor] && updatedFloorsData[floor][sectionId]) {
       const items = updatedFloorsData[floor][sectionId].items || [];
       const item = items.find(i => i.id === itemId);
-      if (item) item.actualPercent = clampPercent(cumulativeProgress[key]);
+      if (item) {
+        item._realized = cumulativeProgress[key];
+      }
+    }
+  });
+
+  // Garantir que andamento atual seja o maior entre cronograma e realizado
+  Object.keys(updatedFloorsData).forEach(floor => {
+    if (updatedFloorsData[floor]) {
+      Object.keys(updatedFloorsData[floor]).forEach(sectionId => {
+        const section = updatedFloorsData[floor][sectionId];
+        if (section && Array.isArray(section.items)) {
+          section.items.forEach(item => {
+            const cronoItem = cronogramaInicial.find(c => c.id === item.id) ||
+              cronogramaInicial.find(c => c.floor === floor && slugify(c.macro) === sectionId && c.service.toUpperCase() === item.name.toUpperCase());
+            const cronoProgress = cronoItem ? (cronoItem.progress || 0) : 0;
+            const realizedProgress = item._realized !== undefined ? item._realized : 0;
+            item.actualPercent = clampPercent(Math.max(cronoProgress, realizedProgress));
+            delete item._realized;
+          });
+        }
+      });
     }
   });
 
   return { recalculatedPlanning, updatedFloorsData };
 };
+
 
 const syncCronogramaWithFloorsData = (currentCrono, floorsList, floorsData) => {
   const baseCrono = Array.isArray(currentCrono) ? currentCrono : [];
@@ -821,7 +845,7 @@ const App = () => {
 
     if (newTasks.length > 0) {
       const updatedPlanning = [...planning, ...newTasks];
-      const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData);
+      const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData, cronogramaInicial);
       await saveToDB(floors, updatedFloorsData, history, weights, recalculatedPlanning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices);
       if (duplicates.length === 0) { setDrawerSelectedServices([]); setIsDrawerOpen(false); }
       setNotification({ message: `${newTasks.length} Novas atividades adicionadas à semana!`, type: 'success' });
@@ -839,7 +863,7 @@ const App = () => {
     const isCurrentActive = (currentTask.plannedThisWeek ?? 100) === value;
     const numericVal = isCurrentActive ? 0 : value;
     const updatedPlanning = planning.map(t => t.id === taskId ? { ...t, plannedThisWeek: numericVal } : t);
-    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData);
+    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData, cronogramaInicial);
     await saveToDB(floors, updatedFloorsData, history, weights, recalculatedPlanning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices);
   };
 
@@ -854,7 +878,7 @@ const App = () => {
       ...t, progressThisWeek: newWeeklyProgress, delayReason: (newWeeklyProgress >= (t.plannedThisWeek ?? 100)) ? '' : t.delayReason
     } : t);
     
-    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData);
+    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData, cronogramaInicial);
     const sectionKey = task.sectionId || 'estrutura';
     const itemBefore = allFloorsData[task.floor]?.[sectionKey]?.items.find(i => i.id === task.itemId);
     const itemAfter = updatedFloorsData[task.floor]?.[sectionKey]?.items.find(i => i.id === task.itemId);
@@ -909,7 +933,7 @@ const App = () => {
     });
 
     const finalPlanning = [...updatedPlanning, ...carryOverTasks];
-    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(finalPlanning, cloneDeep(allFloorsData));
+    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(finalPlanning, cloneDeep(allFloorsData), cronogramaInicial);
 
     await saveToDB(floors, updatedFloorsData, history, weights, recalculatedPlanning, cronogramaInicial, teams, delayReasons, updatedPpcHistory, matrices);
     setCurrentWeekStart(nextWeekDate);
@@ -924,7 +948,7 @@ const App = () => {
 
   const handleRemoveTask = async (taskId) => {
     const updatedPlanning = planning.filter(t => t.id !== taskId);
-    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData);
+    const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData, cronogramaInicial);
     await saveToDB(floors, updatedFloorsData, history, weights, recalculatedPlanning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices);
     setNotification({ message: 'Atividade removida do planeamento.', type: 'success' });
   };
@@ -1132,7 +1156,8 @@ const App = () => {
           // Maintain historical planning tasks for finalized/past weeks, overwrite active week tasks
           const pastPlanning = planning.filter(t => t.weekId < currentWeekId);
           const batchPlanning = [...pastPlanning, ...autoTasks];
-          const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(batchPlanning, updatedFloorsData);
+          const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(batchPlanning, updatedFloorsData, parsedItems);
+
 
           setImportStatus('Gravando dados no Firebase (Aguarde)...');
 
@@ -1244,8 +1269,9 @@ const App = () => {
           updated[f][activeSection].items = updated[f][activeSection].items.filter(i => i.id !== item.id);
         }
       });
-      const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(planning, updated);
+      const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(planning, updated, cronogramaInicial);
       await saveToDB(floors, updatedFloorsData, history, weights, recalculatedPlanning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices);
+
     });
   };
 

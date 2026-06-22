@@ -15,21 +15,6 @@ declare global {
 }
 
 // --- Utilitários de Data e Dados ---
-const toSafeChar = (code: number): string => {
-  if (code >= 55296) {
-    return String.fromCodePoint(code + 2048);
-  }
-  return String.fromCodePoint(code);
-};
-
-const fromSafeChar = (char: string): number => {
-  const code = char.codePointAt(0) || 0;
-  if (code >= 55296 + 2048) {
-    return code - 2048;
-  }
-  return code;
-};
-
 const compressString = (str: string): string => {
   if (!str) return '';
   let dictionary: { [key: string]: number } = {};
@@ -41,7 +26,7 @@ const compressString = (str: string): string => {
   };
   initDict();
   let word = '';
-  const result: number[] = [];
+  const result: string[] = [];
   let dictSize = 256;
   for (let i = 0; i < str.length; i++) {
     const char = str.charAt(i);
@@ -49,7 +34,7 @@ const compressString = (str: string): string => {
     if (Object.prototype.hasOwnProperty.call(dictionary, wc)) {
       word = wc;
     } else {
-      result.push(dictionary[word]);
+      result.push(dictionary[word].toString(36));
       if (dictSize < 65000) {
         dictionary[wc] = dictSize++;
       } else {
@@ -60,9 +45,9 @@ const compressString = (str: string): string => {
     }
   }
   if (word !== '') {
-    result.push(dictionary[word]);
+    result.push(dictionary[word].toString(36));
   }
-  return result.map(toSafeChar).join('');
+  return result.join(',');
 };
 
 const decompressString = (compressedStr: string): string => {
@@ -75,14 +60,15 @@ const decompressString = (compressedStr: string): string => {
     }
   };
   initDict();
-  const chars = Array.from(compressedStr);
-  if (chars.length === 0) return '';
-  let word = chars[0];
+
+  const codes = compressedStr.split(',').map(s => parseInt(s, 36));
+  if (codes.length === 0 || isNaN(codes[0])) return '';
+  let word = dictionary[codes[0]];
   let result = word;
   let entry = '';
   let dictSize = 256;
-  for (let i = 1; i < chars.length; i++) {
-    const code = fromSafeChar(chars[i]);
+  for (let i = 1; i < codes.length; i++) {
+    const code = codes[i];
     if (dictionary[code]) {
       entry = dictionary[code];
     } else {
@@ -111,7 +97,7 @@ const decompressIfNeeded = (val: any): string => {
     return val;
   }
   try {
-    const decompressed = decompressString(val);
+    const decompressed = decompressString(trimmed);
     if (decompressed && (decompressed.startsWith('{') || decompressed.startsWith('['))) {
       return decompressed;
     }
@@ -1179,6 +1165,20 @@ const App = () => {
             progress: 24      // Coluna 25 - Último Realizado
           };
 
+          // Pre-scan data to count valid sub-services per floor + macro
+          const floorPackageCounts: Record<string, number> = {};
+          for (let i = headerIndex + 1; i < data.length; i++) {
+            const row = data[i];
+            if (!row || row.length === 0) continue;
+            const rawFloor = colIdx.floor !== -1 && row[colIdx.floor] !== undefined ? String(row[colIdx.floor]).trim() : 'Térreo';
+            const rawMacro = colIdx.macro !== -1 && row[colIdx.macro] !== undefined ? String(row[colIdx.macro]).trim() : 'ESTRUTURA';
+            const rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? String(row[colIdx.service]).trim() : '';
+            if (rawService && rawService !== '-' && rawMacro && rawMacro !== '-') {
+              const key = `${rawFloor}||${rawMacro}`;
+              floorPackageCounts[key] = (floorPackageCounts[key] || 0) + 1;
+            }
+          }
+
           let parsedItems = [];
           const importedTeams = new Set<any>([...teams]);
           const importedFloors = new Set<any>([...floors]);
@@ -1187,12 +1187,25 @@ const App = () => {
             const row = data[i];
             if (!row || row.length === 0) continue;
 
-            const rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? String(row[colIdx.service]).trim() : '';
-            // Skip rows without a valid service name or if it's '-'
+            const rawFloor = colIdx.floor !== -1 && row[colIdx.floor] !== undefined ? String(row[colIdx.floor]).trim() : 'Térreo';
+            const rawMacro = colIdx.macro !== -1 && row[colIdx.macro] !== undefined ? String(row[colIdx.macro]).trim() : 'ESTRUTURA';
+            let rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? String(row[colIdx.service]).trim() : '';
+
+            // Handle standalone vs summary tasks where Serviço is '-' or empty
+            if (!rawService || rawService === '-') {
+              const key = `${rawFloor}||${rawMacro}`;
+              const hasSiblings = (floorPackageCounts[key] || 0) > 0;
+              if (hasSiblings) {
+                // This is a summary task representing a package with sub-services. Skip it.
+                continue;
+              } else {
+                // Standalone task. Use macro name as service name.
+                rawService = rawMacro;
+              }
+            }
+
             if (!rawService || rawService === '-') continue;
 
-            const rawMacro = colIdx.macro !== -1 && row[colIdx.macro] !== undefined ? row[colIdx.macro] : 'ESTRUTURA';
-            const rawFloor = colIdx.floor !== -1 && row[colIdx.floor] !== undefined ? row[colIdx.floor] : 'Térreo';
             const rawDuration = colIdx.duration !== -1 && row[colIdx.duration] !== undefined ? parseInt(row[colIdx.duration], 10) : 10;
             const rawStart = parseExcelDate(colIdx.start !== -1 && row[colIdx.start] !== undefined ? row[colIdx.start] : undefined);
             const rawEnd = parseExcelDate(colIdx.end !== -1 && row[colIdx.end] !== undefined ? row[colIdx.end] : undefined, rawStart);

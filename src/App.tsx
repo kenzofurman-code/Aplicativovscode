@@ -168,13 +168,25 @@ const DaysSelector = ({ dailyWork, disabled, onChange }) => {
 };
 
 // --- Algoritmo de Sincronização e Recálculo ---
+const roundDown25 = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  if (n >= 100) return 100;
+  if (n >= 75) return 75;
+  if (n >= 50) return 50;
+  if (n >= 25) return 25;
+  return 0;
+};
+
 const syncPlanningAndPhysical = (currentPlanning, floorsData) => {
   const sortedPlanning = [...currentPlanning].sort((a, b) => a.weekId.localeCompare(b.weekId));
   const cumulativeProgress = {};
   
   const recalculatedPlanning = sortedPlanning.map(task => {
     const key = `${task.floor}||${task.sectionId}||${task.itemId}`;
-    if (cumulativeProgress[key] === undefined) cumulativeProgress[key] = task.executedBefore || 0;
+    if (cumulativeProgress[key] === undefined) {
+      cumulativeProgress[key] = roundDown25(task.executedBefore || 0);
+    }
     const updatedTask = { ...task, executedBefore: cumulativeProgress[key] };
     cumulativeProgress[key] = Math.min(100, cumulativeProgress[key] + (task.progressThisWeek || 0));
     return updatedTask;
@@ -191,6 +203,71 @@ const syncPlanningAndPhysical = (currentPlanning, floorsData) => {
   });
 
   return { recalculatedPlanning, updatedFloorsData };
+};
+
+const syncCronogramaWithFloorsData = (currentCrono, floorsList, floorsData) => {
+  const baseCrono = Array.isArray(currentCrono) ? currentCrono : [];
+  
+  // 1. Build a map of valid items currently in floorsData
+  const validKeys = new Set();
+  (floorsList || []).forEach(floor => {
+    const floorData = floorsData[floor] || {};
+    Object.keys(floorData).forEach(macroKey => {
+      const section = floorData[macroKey];
+      if (!section) return;
+      const items = section.items || [];
+      items.forEach(item => {
+        const key = `${floor}||${macroKey}||${item.name.toUpperCase()}`;
+        validKeys.add(key);
+      });
+    });
+  });
+  
+  // 2. Filter out any crono items that are no longer valid (deleted in config)
+  const filteredCrono = baseCrono.filter(c => {
+    const key = `${c.floor}||${slugify(c.macro)}||${c.service.toUpperCase()}`;
+    return validKeys.has(key);
+  });
+  
+  // 3. Add any items from floorsData that are missing in crono
+  const finalCrono = [...filteredCrono];
+  
+  (floorsList || []).forEach(floor => {
+    const floorData = floorsData[floor] || {};
+    Object.keys(floorData).forEach(macroKey => {
+      const section = floorData[macroKey];
+      if (!section) return;
+      const macroTitle = section.title || macroKey.toUpperCase();
+      const items = section.items || [];
+      
+      items.forEach(item => {
+        const exists = finalCrono.some(c => 
+          c.floor === floor && 
+          slugify(c.macro) === macroKey && 
+          c.service.toUpperCase() === item.name.toUpperCase()
+        );
+        
+        if (!exists) {
+          const todayStr = toLocalDateString(new Date());
+          const fiveDaysLaterStr = toLocalDateString(addDays(new Date(), 5));
+          finalCrono.push({
+            id: item.id || `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            macro: macroTitle,
+            floor: floor,
+            service: item.name,
+            duration: 5,
+            start: todayStr,
+            end: fiveDaysLaterStr,
+            cost: 0,
+            responsible: 'EQUIPA GERAL',
+            progress: item.actualPercent || 0
+          });
+        }
+      });
+    });
+  });
+  
+  return finalCrono;
 };
 
 // --- Componentes Visuais Simples ---
@@ -372,6 +449,7 @@ const App = () => {
     if (!db || !userId) return;
     const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
     const trimmedHistory = (hist || []).slice(-150); 
+    const syncedCrono = syncCronogramaWithFloorsData(crono, fls, data);
     try {
       await setDoc(docRef, { 
         floors: Array.isArray(fls) ? fls : [],
@@ -379,7 +457,7 @@ const App = () => {
         history: trimmedHistory,
         weights: wts || {},
         planning: Array.isArray(plans) ? plans : [],
-        cronogramaInicial: Array.isArray(crono) ? crono.slice(0, 10000) : [],
+        cronogramaInicial: Array.isArray(syncedCrono) ? syncedCrono.slice(0, 4000) : [],
         teams: Array.isArray(tms) ? tms : INITIAL_TEAMS,
         delayReasons: Array.isArray(delays) ? delays : INITIAL_DELAYS,
         ppcHistory: Array.isArray(ppcHist) ? ppcHist.slice(-260) : [],
@@ -506,12 +584,12 @@ const App = () => {
 
   const availableFloorsForMacro = useMemo(() => {
     if (!drawerMacro) return [];
-    return Array.from(new Set(cronogramaInicial.filter(item => item.macro === drawerMacro).map(item => item.floor))).filter(Boolean);
+    return Array.from(new Set(cronogramaInicial.filter(item => slugify(item.macro) === drawerMacro).map(item => item.floor))).filter(Boolean);
   }, [cronogramaInicial, drawerMacro]);
 
   const availableServicesForMacroAndFloors = useMemo(() => {
     if (!drawerMacro || drawerFloors.length === 0) return [];
-    return cronogramaInicial.filter(item => item.macro === drawerMacro && drawerFloors.includes(item.floor));
+    return cronogramaInicial.filter(item => slugify(item.macro) === drawerMacro && drawerFloors.includes(item.floor));
   }, [cronogramaInicial, drawerMacro, drawerFloors]);
 
   const currentWeekId = toLocalDateString(currentWeekStart);
@@ -619,7 +697,7 @@ const App = () => {
             id: crypto.randomUUID(), weekId: currentWeekId, floor: match.floor,
             sectionId: slugify(match.macro), itemId: match.id,
             activityName: match.service, responsible: drawerResponsible || match.responsible || (teams[0] || 'Equipa Geral'),
-            weight: 100, executedBefore: match.progress || 0, plannedThisWeek: 100, progressThisWeek: 0,
+            weight: 100, executedBefore: roundDown25(match.progress || 0), plannedThisWeek: 100, progressThisWeek: 0,
             finishDate: match.end, dailyWork: [0, 0, 0, 0, 0], observations: '', delayReason: '', finalized: false
           });
         }
@@ -804,23 +882,16 @@ const App = () => {
           const superHeaderRow = headerIndex > 0 ? data[headerIndex - 1].map(h => String(h || '').trim().toLowerCase()) : [];
           
           const colIdx = {
-            macro: headerRow.findIndex(h => h === 'pacote de trabalho/tarefas' || h.includes('macro') || h.includes('etapa') || h.includes('pacote')),
-            floor: headerRow.findIndex(h => h === 'lote' || h.includes('pavimento') || h.includes('local') || h.includes('pav')),
-            service: headerRow.findIndex(h => h === 'serviço' || h === 'servico' || h === 'nome da tarefa' || h.includes('item') || h.includes('atividade')),
+            macro: 2,         // Coluna 3 - Pacote de serviço
+            service: 3,       // Coluna 4 - Serviço
+            floor: 5,         // Coluna 6 - Lote ou local do serviço
             duration: headerRow.findIndex(h => h === 'duração' || h === 'duracao' || h.includes('prazo') || h.includes('dias')),
-            start: headerRow.findIndex(h => h === 'data de início' || h === 'início' || h === 'inicio'),
-            end: headerRow.findIndex(h => h === 'data de término' || h === 'fim' || h === 'término' || h === 'termino'),
-            cost: headerRow.findIndex(h => h === 'custo vinculado atual' || h.includes('custo') || h.includes('valor') || h.includes('orç')),
-            responsible: headerRow.findIndex(h => h === 'responsáveis' || h.includes('respons') || h.includes('equipe') || h.includes('colaborador')),
-            progress: headerRow.findIndex((h, idx) => {
-              if (h === 'realizado' || h.includes('avanço') || h.includes('concluído') || h.includes('progresso') || h === '%') {
-                if (h === 'realizado' && superHeaderRow[idx] && superHeaderRow[idx].includes('avanço')) return true;
-                if (h !== 'realizado') return true;
-              }
-              return false;
-            })
+            start: 10,        // Coluna 11 - Data de início
+            end: 11,          // Coluna 12 - Data de término
+            cost: 15,         // Coluna 16 - Custo vinculado atual
+            responsible: 14,  // Coluna 15 - Responsável
+            progress: 24      // Coluna 25 - Último Realizado
           };
-          if (colIdx.progress === -1) colIdx.progress = headerRow.findIndex(h => h === 'realizado' || h === '% concluído');
 
           let parsedItems = [];
           const importedTeams = new Set<any>([...teams]);
@@ -830,14 +901,14 @@ const App = () => {
             const row = data[i];
             if (!row || row.length === 0) continue;
 
-            const rawMacro = colIdx.macro !== -1 ? row[colIdx.macro] : 'ESTRUTURA';
-            const rawFloor = colIdx.floor !== -1 ? row[colIdx.floor] : 'Térreo';
-            const rawService = colIdx.service !== -1 ? row[colIdx.service] : `Atividade ${i}`;
-            const rawDuration = colIdx.duration !== -1 ? parseInt(row[colIdx.duration], 10) : 10;
-            const rawStart = parseExcelDate(colIdx.start !== -1 ? row[colIdx.start] : undefined);
-            const rawEnd = parseExcelDate(colIdx.end !== -1 ? row[colIdx.end] : undefined, rawStart);
-            const rawCost = colIdx.cost !== -1 ? parseFloat(String(row[colIdx.cost]).replace(/[^\d.-]/g, '')) : 0;
-            const rawResp = colIdx.responsible !== -1 ? String(row[colIdx.responsible] || '').trim().toUpperCase() : 'EQUIPA GERAL';
+            const rawMacro = colIdx.macro !== -1 && row[colIdx.macro] !== undefined ? row[colIdx.macro] : 'ESTRUTURA';
+            const rawFloor = colIdx.floor !== -1 && row[colIdx.floor] !== undefined ? row[colIdx.floor] : 'Térreo';
+            const rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? row[colIdx.service] : `Atividade ${i}`;
+            const rawDuration = colIdx.duration !== -1 && row[colIdx.duration] !== undefined ? parseInt(row[colIdx.duration], 10) : 10;
+            const rawStart = parseExcelDate(colIdx.start !== -1 && row[colIdx.start] !== undefined ? row[colIdx.start] : undefined);
+            const rawEnd = parseExcelDate(colIdx.end !== -1 && row[colIdx.end] !== undefined ? row[colIdx.end] : undefined, rawStart);
+            const rawCost = colIdx.cost !== -1 && row[colIdx.cost] !== undefined ? parseFloat(String(row[colIdx.cost]).replace(/[^\d.-]/g, '')) : 0;
+            const rawResp = colIdx.responsible !== -1 && row[colIdx.responsible] !== undefined && row[colIdx.responsible] !== null ? String(row[colIdx.responsible]).trim().toUpperCase() : 'EQUIPA GERAL';
 
             let rawProgress = 0;
             if (colIdx.progress !== -1 && row[colIdx.progress] !== undefined) {
@@ -862,10 +933,27 @@ const App = () => {
             return;
           }
           
-          if (parsedItems.length > 2000) {
-            setNotification({ message: `Limite de segurança: Importados apenas os primeiros 2000 serviços.`, type: "error" });
-            parsedItems = parsedItems.slice(0, 2000);
+          if (parsedItems.length > 4000) {
+            setNotification({ message: `Limite de segurança: Importados apenas os primeiros 4000 serviços.`, type: "error" });
+            parsedItems = parsedItems.slice(0, 4000);
           }
+
+          // Clear old Excel-imported items from allFloorsData to keep it incremental and clean
+          const clearOldExcelItems = (floorsData) => {
+            const cleaned = cloneDeep(floorsData);
+            Object.keys(cleaned).forEach(floor => {
+              Object.keys(cleaned[floor]).forEach(macroKey => {
+                if (cleaned[floor][macroKey] && Array.isArray(cleaned[floor][macroKey].items)) {
+                  cleaned[floor][macroKey].items = cleaned[floor][macroKey].items.filter(
+                    item => !String(item.id).startsWith('xls_')
+                  );
+                }
+              });
+            });
+            return cleaned;
+          };
+
+          const baseFloorsData = clearOldExcelItems(allFloorsData);
 
           const batchSize = 150;
           const totalItems = parsedItems.length;
@@ -878,7 +966,7 @@ const App = () => {
             
             const batchTeams = new Set<any>([...teams]);
             const batchFloorsList = new Set<any>([...floors]);
-            const batchFloorsData = cloneDeep(allFloorsData);
+            const batchFloorsData = cloneDeep(baseFloorsData);
             const batchWeights = cloneDeep(weights);
             const batchMacroKeys = new Set<string>();
 
@@ -908,8 +996,9 @@ const App = () => {
                   id: crypto.randomUUID(), weekId: currentWeekId, floor: item.floor,
                   sectionId: slugify(item.macro), itemId: item.id,
                   activityName: item.service, responsible: item.responsible, weight: 100,
-                  executedBefore: item.progress, plannedThisWeek: 100, progressThisWeek: 0,
-                  finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: 'Em andamento (Importado)',
+                  executedBefore: roundDown25(item.progress),
+                  plannedThisWeek: 100, progressThisWeek: 0,
+                  finishDate: item.end, dailyWork: [0, 0, 0, 0, 0], observations: '',
                   delayReason: '', finalized: false
                 });
               }
@@ -922,7 +1011,9 @@ const App = () => {
               macros: Array.from(new Set([...(m.macros || []), ...Array.from(batchMacroKeys)]))
             } : m);
 
-            const batchPlanning = [...planning, ...batchAutoTasks];
+            // Maintain historical planning tasks for finalized/past weeks, overwrite active week tasks
+            const pastPlanning = planning.filter(t => t.weekId < currentWeekId);
+            const batchPlanning = [...pastPlanning, ...batchAutoTasks];
             const { recalculatedPlanning, updatedFloorsData: syncedFloors } = syncPlanningAndPhysical(batchPlanning, batchFloorsData);
 
             setImportStatus(`Enviando dados para o Firebase: Lote ${currentBatch + 1} de ${totalBatches}... (${Math.round((endIdx / totalItems) * 100)}%)`);

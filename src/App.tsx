@@ -1185,77 +1185,71 @@ const App = () => {
             progress: 24      // Coluna 25 - Último Realizado
           };
 
-          // Pre-scan data to count valid sub-services per floor + macro
-          const floorPackageCounts: Record<string, number> = {};
-          for (let i = headerIndex + 1; i < data.length; i++) {
-            const row = data[i];
-            if (!row || row.length === 0) continue;
-            const rawFloor = colIdx.floor !== -1 && row[colIdx.floor] !== undefined ? String(row[colIdx.floor]).trim() : 'Térreo';
-            const rawMacro = colIdx.macro !== -1 && row[colIdx.macro] !== undefined ? String(row[colIdx.macro]).trim() : 'ESTRUTURA';
-            const rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? String(row[colIdx.service]).trim() : '';
-            if (rawService && rawService !== '-' && rawMacro && rawMacro !== '-') {
-              const key = `${rawFloor}||${rawMacro}`;
-              floorPackageCounts[key] = (floorPackageCounts[key] || 0) + 1;
-            }
-          }
-
+          // Two-pass import: 1st pass collects all detail rows (with explicit service names).
+          // 2nd pass collects package-only rows (service = '-') using the macro name as the service name.
+          // Deduplication is handled by the unique item ID key.
+          const seenItemKeys = new Set<string>();
           let parsedItems = [];
           const importedTeams = new Set<any>([...teams]);
           const importedFloors = new Set<any>([...floors]);
 
-          for (let i = headerIndex + 1; i < data.length; i++) {
-            const row = data[i];
-            if (!row || row.length === 0) continue;
+          const processRow = (row: any, useServiceFallback: boolean) => {
+            if (!row || row.length === 0) return;
 
             const rawFloor = colIdx.floor !== -1 && row[colIdx.floor] !== undefined ? String(row[colIdx.floor]).trim() : 'Térreo';
             const rawMacro = colIdx.macro !== -1 && row[colIdx.macro] !== undefined ? String(row[colIdx.macro]).trim() : 'ESTRUTURA';
             let rawService = colIdx.service !== -1 && row[colIdx.service] !== undefined ? String(row[colIdx.service]).trim() : '';
 
-            // Handle standalone vs summary tasks where Serviço is '-' or empty
-            if (!rawService || rawService === '-') {
-              const key = `${rawFloor}||${rawMacro}`;
-              const hasSiblings = (floorPackageCounts[key] || 0) > 0;
-              if (hasSiblings) {
-                // This is a summary task representing a package with sub-services. Skip it.
-                continue;
-              } else {
-                // Standalone task. Use macro name as service name.
-                rawService = rawMacro;
-              }
+            const hasExplicitService = rawService && rawService !== '-';
+
+            if (useServiceFallback) {
+              // 2nd pass: only process package-only rows
+              if (hasExplicitService) return;
+              rawService = rawMacro; // Use macro name as service
+            } else {
+              // 1st pass: only process rows with explicit services
+              if (!hasExplicitService) return;
             }
 
-            if (!rawService || rawService === '-') continue;
+            if (!rawService) return;
+
+            const floorName = String(rawFloor || 'Térreo').trim();
+            const itemKey = `xls_${slugify(floorName)}_${slugify(rawMacro)}_${slugify(rawService)}`;
+
+            if (seenItemKeys.has(itemKey)) return; // skip duplicates
+            seenItemKeys.add(itemKey);
 
             const rawDuration = colIdx.duration !== -1 && row[colIdx.duration] !== undefined ? parseInt(row[colIdx.duration], 10) : 10;
             const rawStart = parseExcelDate(colIdx.start !== -1 && row[colIdx.start] !== undefined ? row[colIdx.start] : undefined);
             const rawEnd = parseExcelDate(colIdx.end !== -1 && row[colIdx.end] !== undefined ? row[colIdx.end] : undefined, rawStart);
             const rawCost = colIdx.cost !== -1 && row[colIdx.cost] !== undefined ? parseFloat(String(row[colIdx.cost]).replace(/[^\d.-]/g, '')) : 0;
             const rawResp = colIdx.responsible !== -1 && row[colIdx.responsible] !== undefined && row[colIdx.responsible] !== null ? String(row[colIdx.responsible]).trim().toUpperCase() : 'EQUIPA GERAL';
-
             let rawProgress = 0;
             if (colIdx.progress !== -1 && row[colIdx.progress] !== undefined) {
               rawProgress = parsePercent(row[colIdx.progress]);
             }
 
             if (rawResp && rawResp !== 'UNDEFINED' && rawResp !== '' && rawResp !== '-') importedTeams.add(rawResp);
-            const floorName = String(rawFloor || 'Térreo').trim();
             importedFloors.add(floorName);
 
-            const itemKey = `xls_${slugify(floorName)}_${slugify(rawMacro)}_${slugify(rawService)}`;
             parsedItems.push({
-              id: itemKey, 
+              id: itemKey,
               macro: String(rawMacro || 'ESTRUTURA').trim().toUpperCase(),
-              floor: floorName, 
+              floor: floorName,
               service: rawService.toUpperCase(),
-              duration: isNaN(rawDuration) ? 5 : rawDuration, 
-              start: rawStart, 
+              duration: isNaN(rawDuration) ? 5 : rawDuration,
+              start: rawStart,
               end: rawEnd,
-              cost: isNaN(rawCost) ? 0 : rawCost, 
-              responsible: rawResp || 'EQUIPA GERAL', 
+              cost: isNaN(rawCost) ? 0 : rawCost,
+              responsible: rawResp || 'EQUIPA GERAL',
               progress: clampPercent(rawProgress)
             });
-          }
+          };
 
+          // 1st pass: all rows WITH explicit services
+          for (let i = headerIndex + 1; i < data.length; i++) processRow(data[i], false);
+          // 2nd pass: all package-only rows (service = '-'), appended after detail rows
+          for (let i = headerIndex + 1; i < data.length; i++) processRow(data[i], true);
 
           if (parsedItems.length === 0) {
             setNotification({ message: "Não foi possível extrair nenhum serviço.", type: "error" });

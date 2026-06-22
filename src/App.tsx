@@ -614,8 +614,17 @@ const App = () => {
         const finalData = loadedData && Object.keys(loadedData).length > 0 ? loadedData : INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: cloneDeep(INITIAL_STRUCTURE) }), {});
         setAllFloorsData(finalData);
 
-        setHistory(d.history || []);
-        setWeights(d.weights || {});
+        let loadedHistory = d.history || [];
+        if (typeof loadedHistory === 'string') {
+          try { loadedHistory = JSON.parse(decompressIfNeeded(loadedHistory)); } catch { loadedHistory = []; }
+        }
+        setHistory(loadedHistory);
+
+        let loadedWeights = d.weights || {};
+        if (typeof loadedWeights === 'string') {
+          try { loadedWeights = JSON.parse(decompressIfNeeded(loadedWeights)); } catch { loadedWeights = {}; }
+        }
+        setWeights(loadedWeights);
 
         let loadedPlanning = d.planning || [];
         if (typeof loadedPlanning === 'string') {
@@ -640,11 +649,19 @@ const App = () => {
         setCronogramaInicial(deserializeCrono(loadedCrono));
         setTeams(d.teams || INITIAL_TEAMS);
         setDelayReasons(d.delayReasons || INITIAL_DELAYS);
-        setPpcHistory(d.ppcHistory || []);
+        let loadedPpcHistory = d.ppcHistory || [];
+        if (typeof loadedPpcHistory === 'string') {
+          try { loadedPpcHistory = JSON.parse(decompressIfNeeded(loadedPpcHistory)); } catch { loadedPpcHistory = []; }
+        }
+        setPpcHistory(loadedPpcHistory);
 
-        const loadedMatrices = d.matrices && d.matrices.length > 0 ? d.matrices : [{
-          id: 'default_matrix', name: 'Matriz Principal', floors: loadedFloors, macros: Object.keys(finalData?.[loadedFloors[0]] || {})
-        }];
+        let loadedMatrices: any[] = d.matrices || [];
+        if (typeof loadedMatrices === 'string') {
+          try { loadedMatrices = JSON.parse(decompressIfNeeded(loadedMatrices as any)); } catch { loadedMatrices = []; }
+        }
+        if (!Array.isArray(loadedMatrices) || loadedMatrices.length === 0) {
+          loadedMatrices = [{ id: 'default_matrix', name: 'Matriz Principal', floors: loadedFloors, macros: Object.keys(finalData?.[loadedFloors[0]] || {}) }];
+        }
         setMatrices(loadedMatrices);
       } else {
         const initialData = INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: cloneDeep(INITIAL_STRUCTURE) }), {});
@@ -665,31 +682,34 @@ const App = () => {
   const saveToDB = async (fls = floors, data = allFloorsData, hist = history, wts = weights, plans = planning, crono = cronogramaInicial, tms = teams, delays = delayReasons, ppcHist = ppcHistory, mats = matrices) => {
     if (!db || !userId) return;
     const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
-    const trimmedHistory = (hist || []).slice(-150); 
+    const trimmedHistory = (hist || []).slice(-100);
     const syncedCrono = syncCronogramaWithFloorsData(crono, fls, data);
     const serializedCrono = serializeCrono(syncedCrono);
     try {
       const dataStr = typeof data === 'string' ? data : JSON.stringify(data || {});
       const planningStr = typeof plans === 'string' ? plans : JSON.stringify(plans || []);
-      const cronoStr = JSON.stringify(Array.isArray(serializedCrono) ? serializedCrono.slice(0, 5500) : []);
+      const cronoStr = JSON.stringify(Array.isArray(serializedCrono) ? serializedCrono.slice(0, 5000) : []);
+      const weightsStr = typeof wts === 'string' ? wts : JSON.stringify(wts || {});
+      const historyStr = JSON.stringify(trimmedHistory);
+      const matricesStr = typeof mats === 'string' ? mats : JSON.stringify(Array.isArray(mats) ? mats : []);
 
       await setDoc(docRef, { 
         floors: Array.isArray(fls) ? fls : [],
         data: compressString(dataStr),
-        history: trimmedHistory,
-        weights: wts || {},
+        history: compressString(historyStr),
+        weights: compressString(weightsStr),
         planning: compressString(planningStr),
         cronogramaInicial: compressString(cronoStr),
         teams: Array.isArray(tms) ? tms : INITIAL_TEAMS,
         delayReasons: Array.isArray(delays) ? delays : INITIAL_DELAYS,
-        ppcHistory: Array.isArray(ppcHist) ? ppcHist.slice(-260) : [],
-        matrices: Array.isArray(mats) ? mats : [],
+        ppcHistory: compressString(JSON.stringify(Array.isArray(ppcHist) ? ppcHist.slice(-200) : [])),
+        matrices: compressString(matricesStr),
         lastUpdated: new Date() 
       });
     } catch (e) {
       console.error("Save error:", e);
       if (e?.message && e.message.includes('exceeds the maximum allowed size')) {
-        setNotification({ message: 'Limite de armazenamento excedido. O histórico foi truncado por segurança.', type: 'error' });
+        setNotification({ message: 'Limite de armazenamento excedido. Tente Limpar o BD e reimportar.', type: 'error' });
       }
       throw e;
     }

@@ -911,6 +911,34 @@ const App = () => {
     }).map(item => ({ id: item, title: matrixSelection.type === 'macro' ? getMacroTitle(item) : item }));
   }, [matrixSelection, matrices, allPossibleMacros, floors]);
 
+  const getItemCost = (itemId: string) => {
+    const match = cronogramaInicial.find(c => c && c.id === itemId);
+    return match && typeof match.cost === 'number' ? match.cost : 0;
+  };
+
+  const getPackageProgress = (floor: string, macroId: string, itemsList: any[]) => {
+    if (!itemsList || itemsList.length === 0) return 0;
+    
+    let totalCost = 0;
+    let weightedProgressSum = 0;
+    
+    itemsList.forEach(item => {
+      if (!item) return;
+      const cost = getItemCost(item.id);
+      const actualPct = item.actualPercent || 0;
+      totalCost += cost;
+      weightedProgressSum += actualPct * cost;
+    });
+    
+    if (totalCost > 0) {
+      return weightedProgressSum / totalCost;
+    }
+    
+    // Fallback to simple average if total cost is 0
+    const sum = itemsList.reduce((acc, item) => acc + (item?.actualPercent || 0), 0);
+    return sum / itemsList.length;
+  };
+
   const macroEvolutionHistory = useMemo(() => {
     const map: Record<string, any> = {};
     
@@ -922,9 +950,8 @@ const App = () => {
         const section = floorData[macro];
         if (!section || !Array.isArray(section.items)) return;
         
-        const totalItems = section.items.length || 1;
-        const currentProgressSum = section.items.reduce((sum, item) => sum + (item.actualPercent || 0), 0);
-        const currentPackageProgress = currentProgressSum / totalItems;
+        // Calculate cost-weighted progress of the package
+        const currentPackageProgress = getPackageProgress(floor, macro, section.items);
         
         if (currentPackageProgress > 0) {
           if (!map[macro]) {
@@ -939,7 +966,7 @@ const App = () => {
               floor, 
               weeks: {},
               finalProgress: currentPackageProgress,
-              totalItems: totalItems,
+              totalItems: section.items.length,
               totalHistoryDelta: 0
             };
           }
@@ -973,17 +1000,25 @@ const App = () => {
       }
       if (!map[macro].floors[floor]) {
         const totalItems = allFloorsData[floor]?.[macro]?.items?.length || 1;
-        const currentProgressSum = allFloorsData[floor]?.[macro]?.items?.reduce((sum, item) => sum + (item.actualPercent || 0), 0) || 0;
+        const currentPackageProgress = getPackageProgress(floor, macro, allFloorsData[floor]?.[macro]?.items || []);
         map[macro].floors[floor] = { 
           floor, 
           weeks: {},
-          finalProgress: currentProgressSum / totalItems,
+          finalProgress: currentPackageProgress,
           totalItems: totalItems,
           totalHistoryDelta: 0
         };
       }
 
-      map[macro].floors[floor].totalHistoryDelta += progressAchieved;
+      // Calculate the package-level delta based on costs
+      const section = allFloorsData[floor]?.[macro];
+      const itemsList = section?.items || [];
+      const totalCost = itemsList.reduce((sum, item) => sum + (getItemCost(item.id) || 0), 0);
+      
+      const itemCost = getItemCost(itemId);
+      const pkgDelta = totalCost > 0 ? (progressAchieved * itemCost) / totalCost : progressAchieved / (itemsList.length || 1);
+
+      map[macro].floors[floor].totalHistoryDelta += pkgDelta;
 
       if (!map[macro].floors[floor].weeks[weekStr]) {
         map[macro].floors[floor].weeks[weekStr] = { 
@@ -996,7 +1031,8 @@ const App = () => {
       
       map[macro].floors[floor].weeks[weekStr].services.push({ 
         name: record.itemName || 'Sem Nome', 
-        delta: progressAchieved 
+        delta: progressAchieved,
+        pkgDelta: pkgDelta
       });
     });
 
@@ -1007,11 +1043,9 @@ const App = () => {
 
       Object.keys(macroData.floors).forEach(fKey => {
         const floorData = macroData.floors[fKey];
-        const totalItems = floorData.totalItems || 1;
         
         // Calculate initial progress (before any recorded history)
-        const historyDeltaProgress = floorData.totalHistoryDelta / totalItems;
-        const initialProgress = Math.max(0, floorData.finalProgress - historyDeltaProgress);
+        const initialProgress = Math.max(0, floorData.finalProgress - floorData.totalHistoryDelta);
         
         let cumulativeMacroPct = initialProgress;
         const sortedWeeks = Object.keys(floorData.weeks).sort();
@@ -1024,14 +1058,13 @@ const App = () => {
             macroDelta: initialProgress,
             macroPercent: initialProgress,
             isImported: true,
-            services: [{ name: 'Avanço inicial/importado', delta: initialProgress * totalItems }]
+            services: [{ name: 'Avanço inicial/importado', delta: initialProgress }]
           });
         }
 
         sortedWeeks.forEach(wKey => {
           const weekData = floorData.weeks[wKey];
-          const totalItemDelta = (weekData.services || []).reduce((sum, s) => sum + s.delta, 0);
-          const weekMacroDelta = totalItemDelta / totalItems;
+          const weekMacroDelta = (weekData.services || []).reduce((sum, s) => sum + (s.pkgDelta || 0), 0);
           cumulativeMacroPct += weekMacroDelta;
           weekData.macroDelta = weekMacroDelta;
           weekData.macroPercent = Math.min(100, Math.max(0, cumulativeMacroPct));
@@ -2102,7 +2135,7 @@ const App = () => {
                     </td>
                     {matrix.macros.map(mId => {
                       const sec = allFloorsData[fId]?.[mId];
-                      const avg = sec?.items && sec.items.length > 0 ? (sec.items.reduce((a, i) => a + (i.actualPercent || 0), 0) / sec.items.length) : 0;
+                      const avg = sec?.items ? getPackageProgress(fId, mId, sec.items) : 0;
                       const isCompleted = avg > 98.9;
                       const isHalf = avg > 50;
                       const isStarted = avg > 0;

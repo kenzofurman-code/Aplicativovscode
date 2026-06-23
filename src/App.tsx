@@ -1660,6 +1660,37 @@ const App = () => {
     recognition.onspeechend = () => { recognition.stop(); setListeningTaskId(null); };
   };
 
+  const handleTeamVoiceInput = (taskId) => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setNotification({ message: "Reconhecimento de voz não suportado pelo seu navegador.", type: "error" });
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    setListeningTaskId(taskId);
+    recognition.start();
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setTeamInputs(prev => {
+        const input = prev[taskId] || { progress: 0, delayReason: '', observations: '' };
+        const existingText = input.observations || '';
+        const combinedText = existingText ? `${existingText} | ${transcript}` : transcript;
+        return {
+          ...prev,
+          [taskId]: { ...input, observations: combinedText }
+        };
+      });
+      setListeningTaskId(null);
+      setNotification({ message: 'Observação ditada com sucesso!', type: 'success' });
+    };
+    recognition.onerror = () => { setListeningTaskId(null); setNotification({ message: 'Falha ao gravar.', type: 'error' }); };
+    recognition.onspeechend = () => { recognition.stop(); setListeningTaskId(null); };
+  };
+
+
   const handleFileUpload = (e: any) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -3704,23 +3735,60 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                       </div>
 
                       {/* Progress input */}
-                      <div className="space-y-1.5">
-                        <label className="block text-[9px] font-black uppercase text-slate-400">Progresso Executado na Semana (%)</label>
-                        <select
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-                          value={input.progress}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            setTeamInputs({
-                              ...teamInputs,
-                              [t.id]: { ...input, progress: val }
-                            });
-                          }}
-                        >
-                          {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(p => (
-                            <option key={p} value={p}>{p}%</option>
-                          ))}
-                        </select>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-[9px] font-black uppercase text-slate-400">Progresso Executado na Semana (%)</label>
+                          {/* Dynamic Status Badge */}
+                          {input.progress > 0 && (
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase shadow-xs ${
+                              isBehind ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
+                              {isBehind ? '⚠️ Atraso' : '✓ Conforme'}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="flex gap-3 justify-center bg-slate-50 p-3 rounded-xl border border-slate-200/60">
+                          {[25, 50, 75, 100].map(val => {
+                            const isActive = input.progress === val;
+                            const isMeta = planned === val;
+                            
+                            let btnStyle = 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200';
+                            
+                            if (isActive) {
+                              // Active: Blue if >= Meta, Red if < Meta
+                              btnStyle = isBehind 
+                                ? 'bg-red-600 text-white shadow-md ring-4 ring-red-100 border-none scale-105' 
+                                : 'bg-blue-600 text-white shadow-md ring-4 ring-blue-100 border-none scale-105';
+                            } else if (isMeta) {
+                              // Highlight weekly meta
+                              btnStyle = 'border-2 border-dashed border-indigo-600 text-indigo-700 bg-indigo-50 font-black relative ring-2 ring-indigo-200/50';
+                            }
+
+                            return (
+                              <button
+                                key={val}
+                                type="button"
+                                onClick={() => {
+                                  const currentVal = input.progress;
+                                  const newVal = currentVal === val ? 0 : val;
+                                  setTeamInputs({
+                                    ...teamInputs,
+                                    [t.id]: { ...input, progress: newVal }
+                                  });
+                                }}
+                                className={`w-12 h-12 rounded-full text-[10px] font-black flex flex-col items-center justify-center transition-all relative ${btnStyle}`}
+                              >
+                                <span>{val}%</span>
+                                {isMeta && !isActive && (
+                                  <span className="absolute -top-1.5 -right-1.5 px-1 bg-indigo-600 text-white text-[6px] font-black rounded uppercase tracking-wider scale-90 shadow-sm">
+                                    Meta
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       {/* Delay Reason - only shown if progress < planned */}
@@ -3750,18 +3818,32 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                       {/* Observations input */}
                       <div className="space-y-1.5">
                         <label className="block text-[9px] font-black uppercase text-slate-400">Observações / Comentários</label>
-                        <input
-                          type="text"
-                          placeholder="EX: Aguardando liberação de material..."
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                          value={input.observations}
-                          onChange={(e) => {
-                            setTeamInputs({
-                              ...teamInputs,
-                              [t.id]: { ...input, observations: e.target.value }
-                            });
-                          }}
-                        />
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="EX: Aguardando liberação de material..."
+                            className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
+                            value={input.observations}
+                            onChange={(e) => {
+                              setTeamInputs({
+                                ...teamInputs,
+                                [t.id]: { ...input, observations: e.target.value }
+                              });
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleTeamVoiceInput(t.id)}
+                            className={`p-2.5 rounded-xl transition-all active:scale-95 text-sm flex items-center justify-center w-10 h-10 shrink-0 ${
+                              listeningTaskId === t.id 
+                                ? 'bg-red-600 text-white animate-pulse ring-4 ring-red-200' 
+                                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100'
+                            }`}
+                            title="Ditar Observação"
+                          >
+                            🎙️
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

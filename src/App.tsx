@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
 declare global {
@@ -551,6 +551,7 @@ const App = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string>('');
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [aiAnalyzedWeekId, setAiAnalyzedWeekId] = useState<string>('');
+  const [aiAnalysesHistory, setAiAnalysesHistory] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setSelectedDashboardMacros([]);
@@ -687,6 +688,12 @@ const App = () => {
           loadedMatrices = [{ id: 'default_matrix', name: 'Matriz Principal', floors: loadedFloors, macros: Object.keys(finalData?.[loadedFloors[0]] || {}) }];
         }
         setMatrices(loadedMatrices);
+
+        let loadedAiAnalyses = d.aiAnalyses || {};
+        if (typeof loadedAiAnalyses === 'string') {
+          try { loadedAiAnalyses = JSON.parse(decompressIfNeeded(loadedAiAnalyses)); } catch { loadedAiAnalyses = {}; }
+        }
+        setAiAnalysesHistory(loadedAiAnalyses);
       } else {
         const initialData = INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: cloneDeep(INITIAL_STRUCTURE) }), {});
         const initialWeights = INITIAL_PAVIMENTOS.reduce((acc, f) => ({ ...acc, [f]: { estrutura: 50, instalacoes: 50 } }), {});
@@ -2006,12 +2013,36 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
       const data = await response.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Nenhuma resposta recebida.';
       setAiAnalysis(text);
+      if (isFinalized && db && userId) {
+        const newCache = { ...aiAnalysesHistory, [weekId]: text };
+        setAiAnalysesHistory(newCache);
+        const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
+        updateDoc(docRef, { aiAnalyses: compressString(JSON.stringify(newCache)) }).catch(console.error);
+      }
     } catch (e: any) {
       setAiAnalysis(`❌ **Erro ao chamar a API:** ${e.message}\n\nVerifique sua chave de API em \`VITE_GEMINI_API_KEY\` no arquivo \`.env.local\`.`);
     } finally {
       setAiLoading(false);
     }
   };
+
+  useEffect(() => {
+    const weekId = toLocalDateString(currentWeekStart);
+    if (aiAnalyzedWeekId === weekId) return;
+
+    const hasTasks = planning.some(t => t.weekId === weekId);
+    
+    if (aiAnalysesHistory[weekId]) {
+      setAiAnalysis(aiAnalysesHistory[weekId]);
+      setAiAnalyzedWeekId(weekId);
+      setAiLoading(false);
+    } else if (hasTasks && !aiLoading) {
+      handleAIAnalysis();
+    } else if (!hasTasks) {
+      setAiAnalysis('');
+      setAiAnalyzedWeekId(weekId);
+    }
+  }, [currentWeekStart, planning, aiAnalysesHistory, aiLoading, aiAnalyzedWeekId]);
 
   // --- Secções de Renderização Isoladas (Para evitar falhas do compilador) ---
   
@@ -2062,6 +2093,85 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                   </div>
                 </div>
                 <button onClick={() => setCurrentWeekStart(prev => addDays(prev, 7))} className="p-2 hover:bg-slate-100 rounded-lg transition text-slate-600">▶</button>
+              </div>
+            </div>
+
+            {/* AI Analysis Panel (Replaces old grid) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mt-6">
+              <div className="p-5 flex justify-between items-center border-b border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl opacity-80">🤖</div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800 tracking-tight uppercase">Análise da semana</h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5 font-bold">
+                      Gerada automaticamente pelo Google Gemini
+                    </p>
+                  </div>
+                </div>
+                {(() => {
+                  const weekId = toLocalDateString(currentWeekStart);
+                  const isFinalized = planning.some(t => t.weekId === weekId && t.finalized);
+                  return isFinalized ? (
+                    <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                      <span>🔒</span> Salvo no histórico
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                      <span>⚡</span> Análise em tempo real
+                    </span>
+                  );
+                })()}
+              </div>
+
+              <div className="p-6">
+                {aiLoading && (
+                  <div className="flex flex-col items-center justify-center py-8 gap-3">
+                    <div className="flex gap-1.5">
+                      {[0,1,2].map(i => (
+                        <div key={i} className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }}/>
+                      ))}
+                    </div>
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">A ler atividades e gerar insights...</p>
+                  </div>
+                )}
+
+                {!aiLoading && !aiAnalysis && (
+                  <div className="flex items-center justify-center py-8 text-center">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-wider italic">
+                      Nenhum dado na semana para analisar.
+                    </p>
+                  </div>
+                )}
+
+                {!aiLoading && aiAnalysis && (
+                  <div className="space-y-3 text-sm leading-relaxed text-slate-700">
+                    {aiAnalysis.split('\n').map((line, i) => {
+                      if (!line.trim()) return <div key={i} className="h-1"/>;
+                      if (line.startsWith('## ')) {
+                        return (
+                          <h4 key={i} className="text-slate-900 font-black text-xs uppercase tracking-wider mt-5 mb-2 flex items-center gap-2 border-b border-slate-100 pb-1">
+                            {line.replace('## ', '')}
+                          </h4>
+                        );
+                      }
+                      if (line.startsWith('# ')) {
+                        return <h3 key={i} className="text-slate-900 font-black text-sm mt-4 mb-2">{line.replace('# ', '')}</h3>;
+                      }
+                      if (line.startsWith('- ') || line.startsWith('* ')) {
+                        return (
+                          <div key={i} className="flex gap-2 text-slate-600 text-xs items-start">
+                            <span className="text-indigo-500 mt-0.5 shrink-0 text-[10px]">■</span>
+                            <span dangerouslySetInnerHTML={{ __html: line.replace(/^[-*]\s/, '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900">$1</strong>') }}/>
+                          </div>
+                        );
+                      }
+                      const htmlLine = line.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900">$1</strong>').replace(/`(.*?)`/g, '<code class="bg-slate-100 text-slate-800 px-1 rounded text-[10px]">$1</code>');
+                      return (
+                        <p key={i} className="text-slate-600 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: htmlLine }}/>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2395,123 +2505,6 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                 </div>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* AI Analysis Panel */}
-        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl shadow-2xl border border-indigo-800/40 overflow-hidden">
-          {/* Header */}
-          <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-indigo-800/30">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xl">🤖</div>
-              <div>
-                <h3 className="text-sm font-black text-white tracking-tight">Análise por Inteligência Artificial</h3>
-                <p className="text-[10px] text-indigo-300 mt-0.5 font-medium">
-                  Gemini analisa atividades, atrasos e observações da semana selecionada
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {aiAnalyzedWeekId && aiAnalyzedWeekId === toLocalDateString(currentWeekStart) && !aiLoading && (
-                <span className="text-[9px] font-black uppercase text-indigo-300 bg-indigo-900/50 border border-indigo-700/50 px-2.5 py-1 rounded-full">
-                  ✓ Analisada
-                </span>
-              )}
-              {(() => {
-                const weekId = toLocalDateString(currentWeekStart);
-                const isFinalized = planning.some(t => t.weekId === weekId && t.finalized);
-                return isFinalized && (
-                  <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-900/30 border border-emerald-700/40 px-2.5 py-1 rounded-full">
-                    🔒 Semana Finalizada
-                  </span>
-                );
-              })()}
-              <button
-                onClick={handleAIAnalysis}
-                disabled={aiLoading}
-                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-900 disabled:text-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-indigo-900/50"
-              >
-                {aiLoading ? (
-                  <>
-                    <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    Analisando...
-                  </>
-                ) : (
-                  <>✨ Analisar Semana</>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Analysis Content */}
-          <div className="p-6">
-            {aiLoading && (
-              <div className="flex flex-col items-center justify-center py-12 gap-4">
-                <div className="flex gap-1.5">
-                  {[0,1,2].map(i => (
-                    <div key={i} className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }}/>
-                  ))}
-                </div>
-                <p className="text-indigo-300 text-xs font-bold uppercase tracking-wider">Gemini está analisando os dados da semana...</p>
-              </div>
-            )}
-
-            {!aiLoading && !aiAnalysis && (
-              <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
-                <span className="text-4xl opacity-30">🤖</span>
-                <p className="text-indigo-400 text-xs font-bold uppercase tracking-wider">
-                  Clique em "Analisar Semana" para gerar o relatório com IA
-                </p>
-                <p className="text-indigo-500/60 text-[10px] max-w-sm">
-                  O Gemini irá analisar as atividades, atrasos, causas de desvio e observações de campo da semana selecionada.
-                </p>
-              </div>
-            )}
-
-            {!aiLoading && aiAnalysis && (
-              <div className="space-y-4 text-sm leading-relaxed">
-                {aiAnalysis.split('\n').map((line, i) => {
-                  if (!line.trim()) return <div key={i} className="h-1"/>;
-                  if (line.startsWith('## ')) {
-                    return (
-                      <h4 key={i} className="text-white font-black text-xs uppercase tracking-wider mt-5 mb-2 flex items-center gap-2">
-                        {line.replace('## ', '')}
-                      </h4>
-                    );
-                  }
-                  if (line.startsWith('# ')) {
-                    return <h3 key={i} className="text-white font-black text-sm mt-4 mb-2">{line.replace('# ', '')}</h3>;
-                  }
-                  if (line.startsWith('- ') || line.startsWith('* ')) {
-                    return (
-                      <div key={i} className="flex gap-2 text-indigo-200 text-xs">
-                        <span className="text-indigo-400 mt-0.5 shrink-0">▸</span>
-                        <span dangerouslySetInnerHTML={{ __html: line.replace(/^[-*]\s/, '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }}/>
-                      </div>
-                    );
-                  }
-                  // Bold inline rendering
-                  const htmlLine = line.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>').replace(/`(.*?)`/g, '<code class="bg-indigo-900/50 text-indigo-300 px-1 rounded text-[10px]">$1</code>');
-                  return (
-                    <p key={i} className="text-indigo-200 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: htmlLine }}/>
-                  );
-                })}
-                <div className="mt-6 pt-4 border-t border-indigo-800/40 flex justify-between items-center">
-                  <span className="text-[9px] text-indigo-500 font-mono">
-                    Gerado por Gemini 2.0 Flash · Semana {aiAnalyzedWeekId}
-                  </span>
-                  <button
-                    onClick={() => { setAiAnalysis(''); setAiAnalyzedWeekId(''); }}
-                    className="text-[9px] text-indigo-400 hover:text-indigo-200 font-bold uppercase tracking-wider transition"
-                  >
-                    × Limpar
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

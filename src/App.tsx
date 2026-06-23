@@ -1859,42 +1859,85 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* List of horizontal progress bars */}
-                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1 custom-scrollbar">
-                  {sortedFloors.map((floorName, idx) => {
-                    const floorActivities = getActivitiesForMonth(floorName);
-                    const stats = getMonthProgressStats(floorActivities);
-                    
+                {/* Floor/Lot Filter Pills */}
+                <div className="flex flex-wrap gap-1.5 mb-4 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
+                  <span className="text-[9px] font-black uppercase text-slate-400 self-center mr-1">Filtrar Lotes:</span>
+                  {floors.map(floorName => {
+                    const isVisible = visibleFloors.includes(floorName);
                     return (
-                      <div key={idx} className="flex items-center gap-3">
-                        {/* Floor Label */}
-                        <div className="w-24 text-right text-[10px] font-black text-slate-600 uppercase truncate" title={floorName}>
-                          {floorName}
-                        </div>
-                        
-                        {/* Progress Container */}
-                        <div className="flex-1 bg-slate-100 h-9 rounded-md relative flex flex-col justify-between p-1 border border-slate-200/60 overflow-hidden">
-                          {/* Previsto Bar */}
-                          <div 
-                            className="bg-cyan-200 h-3 rounded transition-all duration-500" 
-                            style={{ width: `${stats.previsto}%` }}
-                            title={`Previsto: ${stats.previsto.toFixed(1)}%`}
-                          ></div>
-                          {/* Realizado Bar */}
-                          <div 
-                            className="bg-blue-500 h-3 rounded transition-all duration-500 shadow-sm" 
-                            style={{ width: `${stats.realizado}%` }}
-                            title={`Realizado: ${stats.realizado.toFixed(1)}%`}
-                          ></div>
-                        </div>
-
-                        {/* Numerical Realized Value */}
-                        <div className="w-12 text-left text-[10px] font-mono font-black text-slate-700">
-                          {stats.realizado.toFixed(2)}%
-                        </div>
-                      </div>
+                      <button
+                        key={floorName}
+                        onClick={() => {
+                          if (isVisible) {
+                            if (visibleFloors.length > 1) {
+                              setVisibleFloors(visibleFloors.filter(f => f !== floorName));
+                            }
+                          } else {
+                            setVisibleFloors([...visibleFloors, floorName]);
+                          }
+                        }}
+                        className={`px-2 py-0.5 rounded text-[8px] font-black uppercase transition border ${
+                          isVisible 
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'
+                        }`}
+                      >
+                        {floorName}
+                      </button>
                     );
                   })}
+                  <button
+                    onClick={() => {
+                      if (visibleFloors.length === floors.length) {
+                        setVisibleFloors([floors[0]]);
+                      } else {
+                        setVisibleFloors([...floors]);
+                      }
+                    }}
+                    className="px-2 py-0.5 rounded text-[8px] font-black uppercase transition border border-dashed border-slate-300 text-slate-600 hover:bg-slate-100 ml-auto"
+                  >
+                    {visibleFloors.length === floors.length ? 'Nenhum' : 'Todos'}
+                  </button>
+                </div>
+
+                {/* List of horizontal progress bars */}
+                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1 custom-scrollbar">
+                  {sortedFloors
+                    .filter(floorName => visibleFloors.length === 0 || visibleFloors.includes(floorName))
+                    .map((floorName, idx) => {
+                      const floorActivities = getActivitiesForMonth(floorName);
+                      const stats = getMonthProgressStats(floorActivities);
+                      
+                      return (
+                        <div key={idx} className="flex items-center gap-3">
+                          {/* Floor Label */}
+                          <div className="w-24 text-right text-[10px] font-black text-slate-600 uppercase truncate" title={floorName}>
+                            {floorName}
+                          </div>
+                          
+                          {/* Progress Container */}
+                          <div className="flex-1 bg-slate-100 h-9 rounded-md relative flex flex-col justify-between p-1 border border-slate-200/60 overflow-hidden">
+                            {/* Previsto Bar */}
+                            <div 
+                              className="bg-cyan-200 h-3 rounded transition-all duration-500" 
+                              style={{ width: `${stats.previsto}%` }}
+                              title={`Previsto: ${stats.previsto.toFixed(1)}%`}
+                            ></div>
+                            {/* Realizado Bar */}
+                            <div 
+                              className="bg-blue-500 h-3 rounded transition-all duration-500 shadow-sm" 
+                              style={{ width: `${stats.realizado}%` }}
+                              title={`Realizado: ${stats.realizado.toFixed(1)}%`}
+                            ></div>
+                          </div>
+
+                          {/* Numerical Realized Value */}
+                          <div className="w-12 text-left text-[10px] font-mono font-black text-slate-700">
+                            {stats.realizado.toFixed(2)}%
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
 

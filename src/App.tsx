@@ -1994,24 +1994,51 @@ Gere um relatório com as seguintes seções:
 
 Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máximo de 500 palavras.`;
 
+    let text = '';
+    let lastError: any = null;
+    const modelsToTry = [
+      'gemini-2.5-flash-lite',
+      'gemini-2.0-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-2.0-flash',
+      'gemini-2.5-flash',
+      'gemini-flash-latest'
+    ];
+
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
-          })
+      for (const model of modelsToTry) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+              })
+            }
+          );
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err?.error?.message || `Erro HTTP ${response.status}`);
+          }
+          const data = await response.json();
+          text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Nenhuma resposta recebida.';
+          if (text) {
+            lastError = null;
+            break;
+          }
+        } catch (e: any) {
+          lastError = e;
+          console.warn(`Falha ao chamar o modelo ${model}:`, e.message);
         }
-      );
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `Erro HTTP ${response.status}`);
       }
-      const data = await response.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Nenhuma resposta recebida.';
+
+      if (lastError) {
+        throw lastError;
+      }
+
       setAiAnalysis(text);
       if (isFinalized && db && userId) {
         const newCache = { ...aiAnalysesHistory, [weekId]: text };

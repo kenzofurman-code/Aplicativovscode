@@ -576,6 +576,7 @@ const App = () => {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const urlUserId = queryParams.get('u');
   const urlTeamName = queryParams.get('t');
+  const urlWeek = queryParams.get('w');
   const isTeamMode = queryParams.get('mode') === 'team' && !!urlUserId && !!urlTeamName;
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -611,7 +612,16 @@ const App = () => {
   // Estados UI Globais
   const [activeFloor, setActiveFloor] = useState<any>('');
   const [activeSection, setActiveSection] = useState<any>('estrutura');
-  const [currentWeekStart, setCurrentWeekStart] = useState<any>(getWeekStartDate(new Date()));
+  const initialWeekStart = useMemo(() => {
+    if (urlWeek) {
+      const parsed = new Date(urlWeek + 'T00:00:00');
+      if (!Number.isNaN(parsed.getTime())) {
+        return getWeekStartDate(parsed);
+      }
+    }
+    return getWeekStartDate(new Date());
+  }, [urlWeek]);
+  const [currentWeekStart, setCurrentWeekStart] = useState<any>(initialWeekStart);
   const [visibleSections, setVisibleSections] = useState<any[]>([]);
   const [visibleFloors, setVisibleFloors] = useState<any[]>([]);
 
@@ -2006,7 +2016,7 @@ const App = () => {
       taskLines = teamTasks.map(t => `- *${t.floor}*: ${t.activityName} (Meta: ${t.plannedThisWeek ?? 100}%)`).join('\n');
     }
 
-    const appUrl = `${window.location.origin}/?mode=team&u=${userId}&t=${encodeURIComponent(teamName)}`;
+    const appUrl = `${window.location.origin}/?mode=team&u=${userId}&t=${encodeURIComponent(teamName)}&w=${weekId}`;
 
     return `*PLANEJAMENTO SEMANAL (${dateRange})*\n*EQUIPE:* ${teamName}\n\n*Serviços a executar nesta semana:*\n${taskLines}\n\n*Atualize o progresso da sua equipe pelo link:* \n${appUrl}`;
   };

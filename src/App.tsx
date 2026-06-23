@@ -754,7 +754,7 @@ const App = () => {
 
   useEffect(() => {
     if (!db || !userId) return;
-    const targetId = isTeamMode && urlUserId ? urlUserId : userId;
+    const targetId = urlUserId ? urlUserId : userId;
     const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, targetId);
     const unsubscribe = onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
@@ -869,7 +869,7 @@ const App = () => {
     ppcHist = ppcHistory,
     mats = matrices,
     tPhones = teamPhones,
-    targetUserId = (isTeamMode && urlUserId ? urlUserId : userId)
+    targetUserId = (urlUserId ? urlUserId : userId)
   ) => {
     if (!db || !targetUserId) return;
     const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, targetUserId);
@@ -2257,10 +2257,11 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
       }
 
       setAiAnalysis(text);
-      if (isFinalized && db && userId) {
+      if (isFinalized && db && (urlUserId || userId)) {
+        const targetId = urlUserId ? urlUserId : userId;
         const newCache = { ...aiAnalysesHistory, [weekId]: text };
         setAiAnalysesHistory(newCache);
-        const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
+        const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, targetId);
         updateDoc(docRef, { aiAnalyses: compressStringUnicode(JSON.stringify(newCache)) }).catch(console.error);
       }
     } catch (e: any) {
@@ -3803,7 +3804,11 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
             <span className="text-3xl">🏗️</span>
             <div><h1 className="text-lg font-black tracking-tight leading-none">CONSTRUGEST PRO</h1><span className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Modo Touch Total & Controlo de Obra</span></div>
           </div>
-          <div className="flex items-center space-x-2"><span className="px-3 py-1 bg-slate-800 rounded-full text-[9px] font-mono border border-slate-700 text-slate-300">ID: {userId}</span></div>
+          <div className="flex items-center space-x-2">
+            <span className="px-3 py-1 bg-slate-800 rounded-full text-[9px] font-mono border border-slate-700 text-slate-300">
+              ID: {urlUserId ? `${urlUserId} (Compartilhado)` : userId}
+            </span>
+          </div>
         </div>
       </header>
 

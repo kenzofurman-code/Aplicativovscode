@@ -2108,19 +2108,29 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                     </p>
                   </div>
                 </div>
-                {(() => {
-                  const weekId = toLocalDateString(currentWeekStart);
-                  const isFinalized = planning.some(t => t.weekId === weekId && t.finalized);
-                  return isFinalized ? (
-                    <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <span>🔒</span> Salvo no histórico
-                    </span>
-                  ) : (
-                    <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <span>⚡</span> Análise em tempo real
-                    </span>
-                  );
-                })()}
+                <div className="flex items-center gap-2.5">
+                  {!aiLoading && (
+                    <button
+                      onClick={() => handleAIAnalysis()}
+                      className="text-[9px] font-black uppercase text-indigo-700 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 hover:border-indigo-600 px-3 py-1.5 rounded-lg transition duration-200 flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                    >
+                      🔄 Reavaliar semana
+                    </button>
+                  )}
+                  {(() => {
+                    const weekId = toLocalDateString(currentWeekStart);
+                    const isFinalized = planning.some(t => t.weekId === weekId && t.finalized);
+                    return isFinalized ? (
+                      <span className="text-[9px] font-black uppercase text-emerald-700 bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1">
+                        <span>🔒</span> Salvo no histórico
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-black uppercase text-amber-700 bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1">
+                        <span>⚡</span> Análise em tempo real
+                      </span>
+                    );
+                  })()}
+                </div>
               </div>
 
               <div className="p-6">

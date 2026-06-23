@@ -604,6 +604,15 @@ const App = () => {
 
 
 
+  const [plannerUsername, setPlannerUsername] = useState<string>(() => {
+    try {
+      return localStorage.getItem('planner_username') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [dbLastUpdatedBy, setDbLastUpdatedBy] = useState<string>('');
+
   // Estados Core
   const [floors, setFloors] = useState<any[]>(INITIAL_PAVIMENTOS);
   const [allFloorsData, setAllFloorsData] = useState<any>({});
@@ -764,6 +773,7 @@ const App = () => {
         if (!activeFloor || !loadedFloors.includes(activeFloor)) setActiveFloor(loadedFloors[0]);
         if (!selectedDashboardFloor || !loadedFloors.includes(selectedDashboardFloor)) setSelectedDashboardFloor(loadedFloors[0]);
         setLastUpdatedTime(formatTimestamp(d.lastUpdated));
+        setDbLastUpdatedBy(d.lastUpdatedBy || '');
 
         let loadedData = d.data;
         if (typeof loadedData === 'string') {
@@ -896,6 +906,7 @@ const App = () => {
         delayReasons: Array.isArray(delays) ? delays : INITIAL_DELAYS,
         ppcHistory: compressStringUnicode(JSON.stringify(Array.isArray(ppcHist) ? ppcHist.slice(-200) : [])),
         matrices: compressStringUnicode(matricesStr),
+        lastUpdatedBy: isTeamMode ? (urlTeamName ? `Equipe: ${urlTeamName}` : 'Equipe de Campo') : (plannerUsername || 'Sistema'),
         lastUpdated: new Date() 
       });
     } catch (e) {
@@ -1537,7 +1548,8 @@ const App = () => {
     const newWeeklyProgress = isCurrentActive ? 0 : value; 
     
     const updatedPlanning = planning.map(t => t.id === taskId ? { 
-      ...t, progressThisWeek: newWeeklyProgress, delayReason: (newWeeklyProgress >= (t.plannedThisWeek ?? 100)) ? '' : t.delayReason
+      ...t, progressThisWeek: newWeeklyProgress, delayReason: (newWeeklyProgress >= (t.plannedThisWeek ?? 100)) ? '' : t.delayReason,
+      lastUpdatedBy: plannerUsername || 'Sistema'
     } : t);
     
     const { recalculatedPlanning, updatedFloorsData } = syncPlanningAndPhysical(updatedPlanning, allFloorsData, cronogramaInicial);
@@ -1613,7 +1625,7 @@ const App = () => {
   };
 
   const handleUpdateTaskField = async (taskId, field, value) => {
-    const updatedPlanning = planning.map(t => t.id === taskId ? { ...t, [field]: value } : t);
+    const updatedPlanning = planning.map(t => t.id === taskId ? { ...t, [field]: value, lastUpdatedBy: plannerUsername || 'Sistema' } : t);
     await saveToDB(floors, allFloorsData, history, weights, updatedPlanning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices);
   };
 
@@ -1991,6 +2003,7 @@ const App = () => {
           progressThisWeek: t.preFilledProgress !== undefined ? t.preFilledProgress : t.progressThisWeek,
           delayReason: t.preFilledDelayReason !== undefined ? t.preFilledDelayReason : t.delayReason,
           observations: t.preFilledObservations !== undefined ? t.preFilledObservations : t.observations,
+          lastUpdatedBy: t.responsible ? `Equipe: ${t.responsible}` : 'Equipe',
           preFilledProgress: undefined,
           preFilledDelayReason: undefined,
           preFilledObservations: undefined,
@@ -3058,6 +3071,11 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                         <div className="font-black text-slate-800 uppercase tracking-tight text-[11px] leading-tight truncate">{t.activityName}</div>
                       </div>
                       <div className="text-[9px] font-bold text-indigo-600 uppercase mt-0.5">{t.floor}</div>
+                      {t.lastUpdatedBy && (
+                        <div className="text-[8px] text-slate-400 font-bold uppercase mt-1 flex items-center gap-1">
+                          <span>👤</span> {t.lastUpdatedBy}
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 border-r text-center">
                       <select disabled={t.finalized} className="w-full p-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold uppercase cursor-pointer focus:bg-white disabled:opacity-80 disabled:cursor-not-allowed" value={t.responsible || ''} onChange={e => handleUpdateTaskField(t.id, 'responsible', e.target.value)}>
@@ -3148,7 +3166,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                     <td className="p-3 border-r space-y-1">
                       <div className="flex items-center space-x-1.5">
                         <button disabled={t.finalized} onClick={() => handleVoiceInput(t.id)} className={`p-2 rounded-full transition active:scale-95 text-sm ${listeningTaskId === t.id ? 'bg-red-600 text-white animate-ping' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'} disabled:opacity-40`} title="Ditar Observação">🎙️</button>
-                        <input type="text" disabled={t.finalized} className="flex-1 bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] font-medium disabled:opacity-80" placeholder="Notas..." value={t.observations || ''} onChange={e => { const val = e.target.value; setPlanning(planning.map(p => p.id === t.id ? { ...p, observations: val } : p)); }} onBlur={() => saveToDB(floors, allFloorsData, history, weights, planning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices)} />
+                        <input type="text" disabled={t.finalized} className="flex-1 bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] font-medium disabled:opacity-80" placeholder="Notas..." value={t.observations || ''} onChange={e => { const val = e.target.value; setPlanning(planning.map(p => p.id === t.id ? { ...p, observations: val, lastUpdatedBy: plannerUsername || 'Sistema' } : p)); }} onBlur={() => saveToDB(floors, allFloorsData, history, weights, planning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices)} />
                       </div>
                       {t.preFilledObservations && (
                         <div className="text-[8px] text-purple-600 font-bold italic leading-tight pl-9 text-left">
@@ -3796,6 +3814,64 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
     );
   }
 
+  if (!isTeamMode && !plannerUsername) {
+    return (
+      <div className="min-h-screen bg-slate-900 font-sans text-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background elements */}
+        <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-indigo-900/30 blur-[120px]"></div>
+        <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-emerald-900/20 blur-[120px]"></div>
+        
+        {/* Glass Container */}
+        <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 p-8 rounded-3xl shadow-2xl max-w-sm w-full space-y-6 relative z-10 text-center animate-in zoom-in-95 duration-500">
+          <div className="space-y-2">
+            <span className="text-4xl animate-bounce inline-block">🏗️</span>
+            <h2 className="text-xl font-black uppercase tracking-tight text-white">CONSTRUGEST PRO</h2>
+            <p className="text-[10px] text-indigo-300 uppercase tracking-widest font-bold">Identificação de Operador</p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="text-left space-y-1">
+              <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">Seu Nome / Função</label>
+              <input
+                type="text"
+                placeholder="Ex: Kenzo, Engenharia, Planejador..."
+                className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-xl text-xs font-bold text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                id="username-input"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = (e.target as HTMLInputElement).value.trim();
+                    if (val) {
+                      localStorage.setItem('planner_username', val);
+                      setPlannerUsername(val);
+                    }
+                  }
+                }}
+              />
+            </div>
+            
+            <button
+              onClick={() => {
+                const input = document.getElementById('username-input') as HTMLInputElement;
+                const val = input?.value.trim();
+                if (val) {
+                  localStorage.setItem('planner_username', val);
+                  setPlannerUsername(val);
+                }
+              }}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xs tracking-wider rounded-xl shadow-lg transition active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              Entrar no Painel
+            </button>
+          </div>
+          
+          <div className="text-[9px] text-slate-500 leading-relaxed">
+            Esta identificação é salva neste computador e registrará quem realizou cada atualização no banco de dados.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 relative overflow-x-hidden">
       <header className="bg-slate-900 p-4 text-white shadow-xl sticky top-0 z-40">
@@ -3804,10 +3880,30 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
             <span className="text-3xl">🏗️</span>
             <div><h1 className="text-lg font-black tracking-tight leading-none">CONSTRUGEST PRO</h1><span className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Modo Touch Total & Controlo de Obra</span></div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-3 py-1 bg-slate-800 rounded-full text-[9px] font-mono border border-slate-700 text-slate-300">
               ID: {urlUserId ? `${urlUserId} (Compartilhado)` : 'projeto_principal (Padrão)'}
             </span>
+            {plannerUsername && (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-900/60 border border-indigo-700/50 rounded-full text-[9px] font-bold text-indigo-200">
+                <span>👤 {plannerUsername}</span>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('planner_username');
+                    setPlannerUsername('');
+                  }}
+                  className="hover:text-white font-bold ml-1 text-[10px]"
+                  title="Mudar de operador"
+                >
+                  &times;
+                </button>
+              </div>
+            )}
+            {dbLastUpdatedBy && (
+              <span className="px-3 py-1 bg-slate-800 rounded-full text-[9px] border border-slate-700 text-slate-400 italic">
+                Último avanço: {dbLastUpdatedBy}
+              </span>
+            )}
           </div>
         </div>
       </header>

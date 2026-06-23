@@ -547,6 +547,11 @@ const App = () => {
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
   const [activeTower, setActiveTower] = useState<string>('Bloom');
 
+  // Análise IA
+  const [aiAnalysis, setAiAnalysis] = useState<string>('');
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiAnalyzedWeekId, setAiAnalyzedWeekId] = useState<string>('');
+
   useEffect(() => {
     setSelectedDashboardMacros([]);
   }, [selectedDashboardFloor]);
@@ -1894,6 +1899,120 @@ const App = () => {
 
   const triggerConfirm = (title, message, onConfirm) => setConfirmModal({ isOpen: true, title, message, onConfirm });
 
+  // --- Análise por IA ---
+  const handleAIAnalysis = async () => {
+    const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!GEMINI_API_KEY) {
+      setAiAnalysis('⚠️ **Chave de API não configurada.**\n\nPara usar a análise por IA, adicione no arquivo `.env.local`:\n```\nVITE_GEMINI_API_KEY=sua_chave_aqui\n```\nObtenha sua chave gratuita em **aistudio.google.com** → "Get API key".');
+      return;
+    }
+
+    const weekId = toLocalDateString(currentWeekStart);
+    const weekTasks = planning.filter(t => t.weekId === weekId);
+    const isFinalized = weekTasks.some(t => t.finalized);
+    const ppcRecord = ppcHistory.find(h => h.weekId === weekId);
+
+    if (weekTasks.length === 0) {
+      setAiAnalysis('ℹ️ Nenhuma atividade encontrada para a semana selecionada. Navegue para uma semana com atividades registradas.');
+      return;
+    }
+
+    setAiLoading(true);
+    setAiAnalysis('');
+    setAiAnalyzedWeekId(weekId);
+
+    // Build context data
+    const weekEndDate = new Date(currentWeekStart.getTime() + 4 * 86400000);
+    const dateRange = `${currentWeekStart.toLocaleDateString('pt-BR')} a ${weekEndDate.toLocaleDateString('pt-BR')}`;
+    const ppcVal = ppcRecord ? ppcRecord.ppc.toFixed(1) : currentWeekPpcStats.percent.toFixed(1);
+    const totalPlanned = ppcRecord ? ppcRecord.totalPlanned : currentWeekPpcStats.totalPlannedCount;
+    const totalCompleted = ppcRecord ? ppcRecord.completed : currentWeekPpcStats.completedCount;
+
+    const tasksWithDelay = weekTasks.filter(t => (t.plannedThisWeek ?? 100) > (t.progressThisWeek ?? 0) && !t.finalized || t.delayReason);
+    const tasksOk = weekTasks.filter(t => (t.progressThisWeek ?? 0) >= (t.plannedThisWeek ?? 100));
+    const tasksWithObs = weekTasks.filter(t => t.observations && t.observations.trim());
+
+    const delaySummary = tasksWithDelay
+      .map(t => `- ${t.activityName} (${t.floor}): meta ${t.plannedThisWeek ?? 100}%, realizado ${t.progressThisWeek ?? 0}%${t.delayReason ? ` — Motivo: ${t.delayReason}` : ''}`)
+      .slice(0, 15).join('\n');
+
+    const okSummary = tasksOk
+      .map(t => `- ${t.activityName} (${t.floor}): ${t.progressThisWeek ?? 0}%`)
+      .slice(0, 15).join('\n');
+
+    const obsSummary = tasksWithObs
+      .map(t => `- ${t.activityName} (${t.floor}): "${t.observations}"`)
+      .slice(0, 10).join('\n');
+
+    const delayCounts: Record<string, number> = {};
+    weekTasks.forEach(t => { if (t.delayReason) delayCounts[t.delayReason] = (delayCounts[t.delayReason] || 0) + 1; });
+    const topDelays = Object.entries(delayCounts).sort((a, b) => b[1] - a[1]).map(([r, c]) => `${r} (${c}x)`).join(', ');
+
+    const prompt = `Você é um consultor sênior de gestão de obras e projetos de construção civil. Analise os dados da semana de obra abaixo e gere um relatório gerencial completo em português do Brasil.
+
+**DADOS DA SEMANA: ${dateRange}**
+- Status: ${isFinalized ? 'SEMANA FINALIZADA' : 'SEMANA EM ANDAMENTO'}
+- PPC (Percentual de Planos Concluídos): ${ppcVal}%
+- Atividades planejadas: ${totalPlanned}
+- Atividades concluídas conforme meta: ${totalCompleted}
+
+**ATIVIDADES COM DESVIO OU ATRASO (${tasksWithDelay.length} itens):**
+${delaySummary || 'Nenhum desvio registrado.'}
+
+**ATIVIDADES CONCLUÍDAS NO PRAZO (${tasksOk.length} itens):**
+${okSummary || 'Nenhuma atividade concluída.'}
+
+**PRINCIPAIS CAUSAS DE ATRASO:**
+${topDelays || 'Nenhuma causa registrada.'}
+
+**OBSERVAÇÕES DE CAMPO:**
+${obsSummary || 'Nenhuma observação registrada.'}
+
+Gere um relatório com as seguintes seções:
+
+## 📊 Resumo Executivo
+(2-3 frases sobre o desempenho geral da semana)
+
+## ✅ Pontos Positivos
+(lista com o que foi bem executado)
+
+## ⚠️ Problemas e Riscos Identificados
+(análise dos desvios, causas prováveis e impactos)
+
+## 📋 Observações de Campo
+(análise das observações registradas, se houver)
+
+## 💡 Recomendações para a Próxima Semana
+(ações concretas e priorizadas)
+
+Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máximo de 500 palavras.`;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+          })
+        }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `Erro HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Nenhuma resposta recebida.';
+      setAiAnalysis(text);
+    } catch (e: any) {
+      setAiAnalysis(`❌ **Erro ao chamar a API:** ${e.message}\n\nVerifique sua chave de API em \`VITE_GEMINI_API_KEY\` no arquivo \`.env.local\`.`);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   // --- Secções de Renderização Isoladas (Para evitar falhas do compilador) ---
   
   const renderDashboard = () => {
@@ -2276,6 +2395,123 @@ const App = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* AI Analysis Panel */}
+        <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl shadow-2xl border border-indigo-800/40 overflow-hidden">
+          {/* Header */}
+          <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-indigo-800/30">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xl">🤖</div>
+              <div>
+                <h3 className="text-sm font-black text-white tracking-tight">Análise por Inteligência Artificial</h3>
+                <p className="text-[10px] text-indigo-300 mt-0.5 font-medium">
+                  Gemini analisa atividades, atrasos e observações da semana selecionada
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {aiAnalyzedWeekId && aiAnalyzedWeekId === toLocalDateString(currentWeekStart) && !aiLoading && (
+                <span className="text-[9px] font-black uppercase text-indigo-300 bg-indigo-900/50 border border-indigo-700/50 px-2.5 py-1 rounded-full">
+                  ✓ Analisada
+                </span>
+              )}
+              {(() => {
+                const weekId = toLocalDateString(currentWeekStart);
+                const isFinalized = planning.some(t => t.weekId === weekId && t.finalized);
+                return isFinalized && (
+                  <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-900/30 border border-emerald-700/40 px-2.5 py-1 rounded-full">
+                    🔒 Semana Finalizada
+                  </span>
+                );
+              })()}
+              <button
+                onClick={handleAIAnalysis}
+                disabled={aiLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-900 disabled:text-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-indigo-900/50"
+              >
+                {aiLoading ? (
+                  <>
+                    <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Analisando...
+                  </>
+                ) : (
+                  <>✨ Analisar Semana</>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Analysis Content */}
+          <div className="p-6">
+            {aiLoading && (
+              <div className="flex flex-col items-center justify-center py-12 gap-4">
+                <div className="flex gap-1.5">
+                  {[0,1,2].map(i => (
+                    <div key={i} className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }}/>
+                  ))}
+                </div>
+                <p className="text-indigo-300 text-xs font-bold uppercase tracking-wider">Gemini está analisando os dados da semana...</p>
+              </div>
+            )}
+
+            {!aiLoading && !aiAnalysis && (
+              <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+                <span className="text-4xl opacity-30">🤖</span>
+                <p className="text-indigo-400 text-xs font-bold uppercase tracking-wider">
+                  Clique em "Analisar Semana" para gerar o relatório com IA
+                </p>
+                <p className="text-indigo-500/60 text-[10px] max-w-sm">
+                  O Gemini irá analisar as atividades, atrasos, causas de desvio e observações de campo da semana selecionada.
+                </p>
+              </div>
+            )}
+
+            {!aiLoading && aiAnalysis && (
+              <div className="space-y-4 text-sm leading-relaxed">
+                {aiAnalysis.split('\n').map((line, i) => {
+                  if (!line.trim()) return <div key={i} className="h-1"/>;
+                  if (line.startsWith('## ')) {
+                    return (
+                      <h4 key={i} className="text-white font-black text-xs uppercase tracking-wider mt-5 mb-2 flex items-center gap-2">
+                        {line.replace('## ', '')}
+                      </h4>
+                    );
+                  }
+                  if (line.startsWith('# ')) {
+                    return <h3 key={i} className="text-white font-black text-sm mt-4 mb-2">{line.replace('# ', '')}</h3>;
+                  }
+                  if (line.startsWith('- ') || line.startsWith('* ')) {
+                    return (
+                      <div key={i} className="flex gap-2 text-indigo-200 text-xs">
+                        <span className="text-indigo-400 mt-0.5 shrink-0">▸</span>
+                        <span dangerouslySetInnerHTML={{ __html: line.replace(/^[-*]\s/, '').replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }}/>
+                      </div>
+                    );
+                  }
+                  // Bold inline rendering
+                  const htmlLine = line.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>').replace(/`(.*?)`/g, '<code class="bg-indigo-900/50 text-indigo-300 px-1 rounded text-[10px]">$1</code>');
+                  return (
+                    <p key={i} className="text-indigo-200 text-xs leading-relaxed" dangerouslySetInnerHTML={{ __html: htmlLine }}/>
+                  );
+                })}
+                <div className="mt-6 pt-4 border-t border-indigo-800/40 flex justify-between items-center">
+                  <span className="text-[9px] text-indigo-500 font-mono">
+                    Gerado por Gemini 2.0 Flash · Semana {aiAnalyzedWeekId}
+                  </span>
+                  <button
+                    onClick={() => { setAiAnalysis(''); setAiAnalyzedWeekId(''); }}
+                    className="text-[9px] text-indigo-400 hover:text-indigo-200 font-bold uppercase tracking-wider transition"
+                  >
+                    × Limpar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

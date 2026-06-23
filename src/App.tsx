@@ -104,7 +104,96 @@ const decompressIfNeeded = (val: any): string => {
   } catch (e) {
     console.error("Decompression check error:", e);
   }
-  return val;
+};
+
+const compressStringUnicode = (str: string): string => {
+  if (!str) return '';
+  const bytes = new TextEncoder().encode(str);
+  let binaryStr = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binaryStr += String.fromCodePoint(bytes[i]);
+  }
+  str = binaryStr;
+
+  let dictionary: { [key: string]: number } = {};
+  const initDict = () => {
+    dictionary = {};
+    for (let i = 0; i < 256; i++) {
+      dictionary[String.fromCodePoint(i)] = i;
+    }
+  };
+  initDict();
+  let word = '';
+  const result: string[] = [];
+  let dictSize = 256;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charAt(i);
+    const wc = word + char;
+    if (Object.prototype.hasOwnProperty.call(dictionary, wc)) {
+      word = wc;
+    } else {
+      result.push(dictionary[word].toString(36));
+      if (dictSize < 65000) {
+        dictionary[wc] = dictSize++;
+      } else {
+        initDict();
+        dictSize = 256;
+      }
+      word = char;
+    }
+  }
+  if (word !== '') {
+    result.push(dictionary[word].toString(36));
+  }
+  return 'unicode:' + result.join(',');
+};
+
+const decompressStringUnicode = (compressedStr: string): string => {
+  if (!compressedStr) return '';
+  if (!compressedStr.startsWith('unicode:')) {
+    throw new Error('Not compressed with Unicode LZW');
+  }
+  const dataPart = compressedStr.substring(8);
+  let dictionary: { [key: number]: string } = {};
+  const initDict = () => {
+    dictionary = {};
+    for (let i = 0; i < 256; i++) {
+      dictionary[i] = String.fromCodePoint(i);
+    }
+  };
+  initDict();
+
+  const r = dataPart.split(',');
+  let w = dictionary[parseInt(r[0], 36)];
+  let result = w;
+  let dictSize = 256;
+
+  for (let i = 1; i < r.length; i++) {
+    const k = parseInt(r[i], 36);
+    let entry = '';
+    if (Object.prototype.hasOwnProperty.call(dictionary, k)) {
+      entry = dictionary[k];
+    } else if (k === dictSize) {
+      entry = w + w.charAt(0);
+    } else {
+      throw new Error('Decompress error');
+    }
+    result += entry;
+
+    if (dictSize < 65000) {
+      dictionary[dictSize++] = w + entry.charAt(0);
+    } else {
+      initDict();
+      dictSize = 256;
+    }
+    w = entry;
+  }
+
+  const bytes = new Uint8Array(result.length);
+  for (let i = 0; i < result.length; i++) {
+    bytes[i] = result.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
 };
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? {}));
@@ -691,7 +780,15 @@ const App = () => {
 
         let loadedAiAnalyses = d.aiAnalyses || {};
         if (typeof loadedAiAnalyses === 'string') {
-          try { loadedAiAnalyses = JSON.parse(decompressIfNeeded(loadedAiAnalyses)); } catch { loadedAiAnalyses = {}; }
+          try {
+            if (loadedAiAnalyses.startsWith('unicode:')) {
+              loadedAiAnalyses = JSON.parse(decompressStringUnicode(loadedAiAnalyses));
+            } else {
+              loadedAiAnalyses = JSON.parse(decompressIfNeeded(loadedAiAnalyses));
+            }
+          } catch {
+            loadedAiAnalyses = {};
+          }
         }
         setAiAnalysesHistory(loadedAiAnalyses);
       } else {
@@ -2044,7 +2141,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         const newCache = { ...aiAnalysesHistory, [weekId]: text };
         setAiAnalysesHistory(newCache);
         const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
-        updateDoc(docRef, { aiAnalyses: compressString(JSON.stringify(newCache)) }).catch(console.error);
+        updateDoc(docRef, { aiAnalyses: compressStringUnicode(JSON.stringify(newCache)) }).catch(console.error);
       }
     } catch (e: any) {
       setAiAnalysis(`❌ **Erro ao chamar a API:** ${e.message}\n\nVerifique sua chave de API em \`VITE_GEMINI_API_KEY\` no arquivo \`.env.local\`.`);

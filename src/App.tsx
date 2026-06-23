@@ -522,6 +522,7 @@ const App = () => {
   const [giantStatusFilter, setHistoryStatusFilter] = useState<string>('');
   const [giantSortKey, setGiantSortKey] = useState<string>('weekId');
   const [giantSortDir, setGiantSortDir] = useState<'asc'|'desc'>('desc');
+  const [macroEvolutionSearch, setMacroEvolutionSearch] = useState<string>('');
 
   // Filtros Cronograma
   const [cronoSearch, setCronoSearch] = useState<string>('');
@@ -2820,9 +2821,21 @@ const App = () => {
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200">
-        <h3 className="text-sm font-black text-slate-800 uppercase mb-4 flex items-center gap-2"><span>🔄</span> Evolução e Variação Acumulada por Pacote (Histórico Geral)</h3>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+          <h3 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2"><span>🔄</span> Evolução e Variação Acumulada por Pacote (Histórico Geral)</h3>
+          <div className="relative w-full sm:w-64">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">🔍</span>
+            <input
+              type="text"
+              className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-400 outline-none bg-slate-50"
+              placeholder="Buscar pacote..."
+              value={macroEvolutionSearch}
+              onChange={e => setMacroEvolutionSearch(e.target.value)}
+            />
+          </div>
+        </div>
         <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
-          {(macroEvolutionHistory || []).map((macro, idx) => (
+          {(macroEvolutionHistory || []).filter(macro => !macroEvolutionSearch || (macro?.sectionTitle || '').toLowerCase().includes(macroEvolutionSearch.toLowerCase())).map((macro, idx) => (
             <div key={idx} className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">
                 <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded uppercase tracking-wider">{macro?.sectionTitle}</span>

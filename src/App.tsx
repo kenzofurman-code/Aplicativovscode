@@ -568,10 +568,16 @@ const INITIAL_CRONOGRAMA = [];
 const INITIAL_TEAMS = ['EQUIPA CIVIL', 'EQUIPA ARMADURA', 'EQUIPA HIDRÁULICA', 'EQUIPA ELÉTRICA', 'EQUIPA ACABAMENTO'];
 const INITIAL_DELAYS = ['Chuva / Clima Impróprio', 'Falta de Material em Obra', 'Falta de Mão de Obra / Absenteísmo', 'Atraso de Projeto ou Detalhe', 'Quebra de Equipamento / Ferramenta', 'Serviço Anterior não Concluído'];
 
-// --- App Principal ---
 const App = () => {
   const [db, setDb] = useState<any>(null);
   const [userId, setUserId] = useState<any>(null);
+
+  // Intercepção de modo de equipa (WhatsApp/Mobile)
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const urlUserId = queryParams.get('u');
+  const urlTeamName = queryParams.get('t');
+  const isTeamMode = queryParams.get('mode') === 'team' && !!urlUserId && !!urlTeamName;
+
   const [loading, setLoading] = useState<boolean>(true);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [importStatus, setImportStatus] = useState<string>('');
@@ -585,6 +591,8 @@ const App = () => {
     }
   }, [notification]);
 
+
+
   // Estados Core
   const [floors, setFloors] = useState<any[]>(INITIAL_PAVIMENTOS);
   const [allFloorsData, setAllFloorsData] = useState<any>({});
@@ -596,7 +604,10 @@ const App = () => {
   const [delayReasons, setDelayReasons] = useState<any[]>(INITIAL_DELAYS);
   const [ppcHistory, setPpcHistory] = useState<any[]>([]);
   const [matrices, setMatrices] = useState<any[]>([]); 
-
+  const [teamPhones, setTeamPhones] = useState<Record<string, string>>({});
+  const [whatsappModal, setWhatsappModal] = useState<{ isOpen: boolean, teamName: string, text: string }>({ isOpen: false, teamName: '', text: '' });
+  const [teamInputs, setTeamInputs] = useState<Record<string, { progress: number, delayReason: string, observations: string }>>({});
+  const [teamSubmitSuccess, setTeamSubmitSuccess] = useState<boolean>(false);
   // Estados UI Globais
   const [activeFloor, setActiveFloor] = useState<any>('');
   const [activeSection, setActiveSection] = useState<any>('estrutura');
@@ -668,6 +679,23 @@ const App = () => {
   const [finalizeModal, setFinalizeModal] = useState<any>({ isOpen: false, carryOverUnfinished: true });
   const [matrixSelection, setMatrixSelection] = useState({ isOpen: false, matrixId: '', type: 'macro' });
 
+  // Inicializa inputs de apontamento de campo (WhatsApp/Mobile)
+  useEffect(() => {
+    if (!isTeamMode) return;
+    const weekId = toLocalDateString(currentWeekStart);
+    const initialInputs: typeof teamInputs = {};
+    planning.forEach(t => {
+      if (t.weekId === weekId && t.responsible === urlTeamName) {
+        initialInputs[t.id] = {
+          progress: t.preFilledProgress !== undefined ? t.preFilledProgress : (t.progressThisWeek ?? 0),
+          delayReason: t.preFilledDelayReason || t.delayReason || '',
+          observations: t.preFilledObservations || t.observations || ''
+        };
+      }
+    });
+    setTeamInputs(initialInputs);
+  }, [currentWeekStart, planning, isTeamMode, urlTeamName]);
+
   // XLSX carregado via dependência do npm
 
   useEffect(() => {
@@ -706,7 +734,8 @@ const App = () => {
 
   useEffect(() => {
     if (!db || !userId) return;
-    const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
+    const targetId = isTeamMode && urlUserId ? urlUserId : userId;
+    const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, targetId);
     const unsubscribe = onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
         const d = snap.data();
@@ -762,6 +791,7 @@ const App = () => {
         }
         setCronogramaInicial(deserializeCrono(loadedCrono));
         setTeams(d.teams || INITIAL_TEAMS);
+        setTeamPhones(d.teamPhones || {});
         setDelayReasons(d.delayReasons || INITIAL_DELAYS);
         let loadedPpcHistory = d.ppcHistory || [];
         if (typeof loadedPpcHistory === 'string') {
@@ -805,11 +835,24 @@ const App = () => {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [db, userId]);
+  }, [db, userId, isTeamMode, urlUserId]);
 
-  const saveToDB = async (fls = floors, data = allFloorsData, hist = history, wts = weights, plans = planning, crono = cronogramaInicial, tms = teams, delays = delayReasons, ppcHist = ppcHistory, mats = matrices) => {
-    if (!db || !userId) return;
-    const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, userId);
+  const saveToDB = async (
+    fls = floors,
+    data = allFloorsData,
+    hist = history,
+    wts = weights,
+    plans = planning,
+    crono = cronogramaInicial,
+    tms = teams,
+    delays = delayReasons,
+    ppcHist = ppcHistory,
+    mats = matrices,
+    tPhones = teamPhones,
+    targetUserId = (isTeamMode && urlUserId ? urlUserId : userId)
+  ) => {
+    if (!db || !targetUserId) return;
+    const docRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, targetUserId);
     const trimmedHistory = (hist || []).slice(-100);
     const syncedCrono = syncCronogramaWithFloorsData(crono, fls, data);
     const serializedCrono = serializeCrono(syncedCrono);
@@ -829,6 +872,7 @@ const App = () => {
         planning: compressString(planningStr),
         cronogramaInicial: compressString(cronoStr),
         teams: Array.isArray(tms) ? tms : INITIAL_TEAMS,
+        teamPhones: tPhones || {},
         delayReasons: Array.isArray(delays) ? delays : INITIAL_DELAYS,
         ppcHistory: compressString(JSON.stringify(Array.isArray(ppcHist) ? ppcHist.slice(-200) : [])),
         matrices: compressString(matricesStr),
@@ -1919,6 +1963,62 @@ const App = () => {
     setNotification({ message: 'Equipa removida.', type: 'success' });
   };
 
+  const handleAcceptPreFill = async (taskId: string) => {
+    const updatedPlanning = planning.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          progressThisWeek: t.preFilledProgress !== undefined ? t.preFilledProgress : t.progressThisWeek,
+          delayReason: t.preFilledDelayReason !== undefined ? t.preFilledDelayReason : t.delayReason,
+          observations: t.preFilledObservations !== undefined ? t.preFilledObservations : t.observations,
+          preFilledProgress: undefined,
+          preFilledDelayReason: undefined,
+          preFilledObservations: undefined,
+          preFilledAt: undefined
+        };
+      }
+      return t;
+    });
+
+    setPlanning(updatedPlanning);
+    await saveToDB(floors, allFloorsData, history, weights, updatedPlanning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices);
+    setNotification({ message: 'Apontamento de campo aceito com sucesso!', type: 'success' });
+  };
+
+  const openWhatsappShareModal = () => {
+    if (teams.length === 0) return;
+    const initialTeam = teams[0];
+    const text = generateWhatsappMessage(initialTeam);
+    setWhatsappModal({ isOpen: true, teamName: initialTeam, text });
+  };
+
+  const generateWhatsappMessage = (teamName: string): string => {
+    const weekId = toLocalDateString(currentWeekStart);
+    const weekEndDate = new Date(currentWeekStart.getTime() + 4 * 86400000);
+    const dateRange = `${currentWeekStart.toLocaleDateString('pt-BR')} a ${weekEndDate.toLocaleDateString('pt-BR')}`;
+    
+    const teamTasks = planning.filter(t => t.weekId === weekId && t.responsible === teamName && !t.finalized);
+    
+    let taskLines = '';
+    if (teamTasks.length === 0) {
+      taskLines = 'Nenhuma atividade ativa planejada para esta semana.';
+    } else {
+      taskLines = teamTasks.map(t => `- *${t.floor}*: ${t.activityName} (Meta: ${t.plannedThisWeek ?? 100}%)`).join('\n');
+    }
+
+    const appUrl = `${window.location.origin}/?mode=team&u=${userId}&t=${encodeURIComponent(teamName)}`;
+
+    return `*PLANEJAMENTO SEMANAL (${dateRange})*\n*EQUIPE:* ${teamName}\n\n*Serviços a executar nesta semana:*\n${taskLines}\n\n*Atualize o progresso da sua equipe pelo link:* \n${appUrl}`;
+  };
+
+  const handleSendWhatsapp = () => {
+    const phone = teamPhones[whatsappModal.teamName] || '';
+    const cleanPhone = phone.replace(/[^\d+]/g, '');
+    const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappModal.text)}`;
+    window.open(url, '_blank');
+    setWhatsappModal(prev => ({ ...prev, isOpen: false }));
+  };
+
   const handleAddDelayReason = async () => {
     if (!newDelayReason.trim()) return;
     const text = newDelayReason.trim();
@@ -2834,6 +2934,14 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
             <button onClick={() => setCurrentWeekStart(prev => addDays(prev, 7))} className="p-2.5 hover:bg-white rounded-lg shadow-sm transition">▶</button>
           </div>
           <div className="flex gap-2 w-full md:w-auto">
+            {teams.length > 0 && weeklyTasks.length > 0 && (
+              <button
+                onClick={openWhatsappShareModal}
+                className="flex-1 md:flex-none px-4 py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 text-indigo-700 font-black rounded-xl shadow-sm transition active:scale-95 text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>💬</span> WhatsApp
+              </button>
+            )}
             <button onClick={() => setFinalizeModal({ isOpen: true, carryOverUnfinished: true })} disabled={weeklyTasks.length === 0} className="flex-1 md:flex-none px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-black rounded-xl shadow transition active:scale-95 text-xs uppercase tracking-wider flex items-center justify-center gap-2">
               <span>🏁</span> Finalizar Semana
             </button>
@@ -2968,35 +3076,79 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                       <DaysSelector dailyWork={t.dailyWork} disabled={t.finalized} onChange={(newDW) => handleDailyWorkChange(t.id, newDW)} />
                     </td>
                     <td className="p-3 border-r">
-                      <div className="flex gap-1 justify-center">
-                        {[25, 50, 75, 100].map(val => {
-                          const isActive = progVal === val;
-                          const isOk = val > currentPlan || val === currentPlan;
-                          const btnColor = isOk ? 'bg-blue-600 ring-blue-300' : 'bg-red-600 ring-red-300';
-                          return (
-                            <button key={val} disabled={t.finalized} onClick={() => handleWeeklyProgressChange(t.id, val)} className={`w-8 h-8 rounded-full text-[9px] font-black flex items-center justify-center transition-all ${isActive ? `${btnColor} text-white scale-110 shadow-md ring-2` : 'bg-slate-100 text-slate-500 hover:bg-slate-200'} disabled:opacity-50 disabled:cursor-default`}>{val}%</button>
-                          );
-                        })}
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="flex gap-1 justify-center">
+                          {[25, 50, 75, 100].map(val => {
+                            const isActive = progVal === val;
+                            const isPrefilled = t.preFilledProgress === val;
+                            const isOk = val > currentPlan || val === currentPlan;
+                            const btnColor = isOk ? 'bg-blue-600 ring-blue-300' : 'bg-red-600 ring-red-300';
+                            
+                            let prefillClass = '';
+                            if (isPrefilled && !isActive) {
+                              prefillClass = 'ring-2 ring-dashed ring-purple-500 text-purple-700 bg-purple-50';
+                            }
+                            return (
+                              <button
+                                key={val}
+                                disabled={t.finalized}
+                                onClick={() => handleWeeklyProgressChange(t.id, val)}
+                                className={`w-8 h-8 rounded-full text-[9px] font-black flex items-center justify-center transition-all ${isActive ? `${btnColor} text-white scale-110 shadow-md ring-2` : prefillClass ? prefillClass : 'bg-slate-100 text-slate-500 hover:bg-slate-200'} disabled:opacity-50 disabled:cursor-default`}
+                              >
+                                {val}%
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {t.preFilledProgress !== undefined && (
+                          <div className="text-[8px] font-black text-purple-700 uppercase tracking-tight bg-purple-100/70 border border-purple-200 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 mt-0.5" title={`Sugestão da equipe enviada em ${t.preFilledAt || ''}`}>
+                            <span>📲 Sugerido: {t.preFilledProgress}%</span>
+                          </div>
+                        )}
                       </div>
                     </td>
-                    <td className="p-3 border-r text-center">
+                    <td className="p-3 border-r text-center space-y-1">
                       {showDelayAlert ? (
-                        <select disabled={t.finalized} className="w-full p-2 bg-red-100/80 border border-red-200 rounded-lg text-[10px] font-bold text-red-800 cursor-pointer disabled:opacity-80" value={t.delayReason || ''} onChange={e => handleUpdateTaskField(t.id, 'delayReason', e.target.value)}>
-                          <option value="">⚠️ Motivo...</option>
-                          {delayReasons.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
+                        <>
+                          <select disabled={t.finalized} className="w-full p-2 bg-red-100/80 border border-red-200 rounded-lg text-[10px] font-bold text-red-800 cursor-pointer disabled:opacity-80" value={t.delayReason || ''} onChange={e => handleUpdateTaskField(t.id, 'delayReason', e.target.value)}>
+                            <option value="">⚠️ Motivo...</option>
+                            {delayReasons.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                          {t.preFilledDelayReason && (
+                            <div className="text-[8px] text-purple-600 font-bold italic leading-tight text-left pl-1">
+                              📲 Sugerido: "{t.preFilledDelayReason}"
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <span className="text-[10px] font-bold text-emerald-600">✓ Conforme</span>
                       )}
                     </td>
-                    <td className="p-3 border-r">
+                    <td className="p-3 border-r space-y-1">
                       <div className="flex items-center space-x-1.5">
                         <button disabled={t.finalized} onClick={() => handleVoiceInput(t.id)} className={`p-2 rounded-full transition active:scale-95 text-sm ${listeningTaskId === t.id ? 'bg-red-600 text-white animate-ping' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'} disabled:opacity-40`} title="Ditar Observação">🎙️</button>
                         <input type="text" disabled={t.finalized} className="flex-1 bg-slate-50 border border-slate-200 p-2 rounded-lg text-[10px] font-medium disabled:opacity-80" placeholder="Notas..." value={t.observations || ''} onChange={e => { const val = e.target.value; setPlanning(planning.map(p => p.id === t.id ? { ...p, observations: val } : p)); }} onBlur={() => saveToDB(floors, allFloorsData, history, weights, planning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices)} />
                       </div>
+                      {t.preFilledObservations && (
+                        <div className="text-[8px] text-purple-600 font-bold italic leading-tight pl-9 text-left">
+                          📲 Sugerido: "{t.preFilledObservations}"
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 text-center">
-                      <button disabled={t.finalized} onClick={() => triggerConfirm('Excluir Atividade', `Deseja remover "${t.activityName}" desta semana?`, () => handleRemoveTask(t.id))} className="text-red-500 hover:text-red-700 font-bold text-sm disabled:opacity-30">🗑️</button>
+                      <div className="flex items-center justify-center gap-2">
+                        {t.preFilledProgress !== undefined && (
+                          <button
+                            disabled={t.finalized}
+                            onClick={() => handleAcceptPreFill(t.id)}
+                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200 hover:border-emerald-300 font-bold text-xs disabled:opacity-30 cursor-pointer shadow-xs active:scale-95 flex items-center justify-center animate-bounce"
+                            title={`Aceitar apontamento da equipe (sugerido em ${t.preFilledAt || ''})`}
+                          >
+                            ✅
+                          </button>
+                        )}
+                        <button disabled={t.finalized} onClick={() => triggerConfirm('Excluir Atividade', `Deseja remover "${t.activityName}" desta semana?`, () => handleRemoveTask(t.id))} className="text-red-500 hover:text-red-700 font-bold text-sm disabled:opacity-30">🗑️</button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -3352,13 +3504,38 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
           <input type="text" placeholder="Nome da Equipa..." className="flex-1 p-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase font-bold" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddTeam()} />
           <button onClick={handleAddTeam} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition">REGISTAR</button>
         </div>
-        <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-2">
+        <div className="space-y-2 max-w-lg max-h-60 overflow-y-auto pr-2">
           {teams.map(team => (
-            <div key={team} className="flex items-center space-x-2 px-3 py-1.5 bg-slate-100 rounded-full text-xs font-bold text-slate-700 border">
-              <span>{team}</span>
-              <button onClick={() => triggerConfirm('Remover Equipa', `Deseja realmente excluir "${team}"?`, () => handleDeleteTeam(team))} className="text-red-500 hover:text-red-700 font-bold ml-1">&times;</button>
+            <div key={team} className="flex justify-between items-center p-2.5 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-xl transition duration-200">
+              <div className="flex-1 min-w-0 pr-3">
+                <div className="text-xs font-black text-slate-800 truncate uppercase">{team}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone:</span>
+                <input
+                  type="text"
+                  placeholder="+55 11 99999-9999"
+                  className="w-40 p-1.5 text-[10px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white font-mono outline-none"
+                  value={teamPhones[team] || ''}
+                  onChange={(e) => {
+                    const newPhones = { ...teamPhones, [team]: e.target.value };
+                    setTeamPhones(newPhones);
+                  }}
+                  onBlur={() => saveToDB(floors, allFloorsData, history, weights, planning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices, teamPhones)}
+                />
+                <button
+                  onClick={() => triggerConfirm('Remover Equipa', `Deseja realmente excluir "${team}"?`, () => handleDeleteTeam(team))}
+                  className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-700 rounded-lg transition"
+                  title="Remover equipa"
+                >
+                  🗑️
+                </button>
+              </div>
             </div>
           ))}
+          {teams.length === 0 && (
+            <div className="text-center py-6 text-slate-400 italic text-xs font-bold uppercase">Nenhuma equipa registada.</div>
+          )}
         </div>
       </div>
 
@@ -3379,6 +3556,213 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
       </div>
     </div>
   );
+
+  const renderTeamInputScreen = () => {
+    const weekId = toLocalDateString(currentWeekStart);
+    const weekEndDate = new Date(currentWeekStart.getTime() + 4 * 86400000);
+    const teamTasks = planning.filter(t => t.weekId === weekId && t.responsible === urlTeamName);
+
+    const handleSubmitTeamReport = async () => {
+      setLoading(true);
+      try {
+        const updatedPlanning = planning.map(t => {
+          if (t.weekId === weekId && t.responsible === urlTeamName) {
+            const input = teamInputs[t.id] || { progress: 0, delayReason: '', observations: '' };
+            return {
+              ...t,
+              preFilledProgress: input.progress,
+              preFilledDelayReason: input.progress < (t.plannedThisWeek ?? 100) ? input.delayReason : '',
+              preFilledObservations: input.observations,
+              preFilledAt: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR')
+            };
+          }
+          return t;
+        });
+
+        await saveToDB(floors, allFloorsData, history, weights, updatedPlanning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices, teamPhones, urlUserId);
+        
+        setTeamSubmitSuccess(true);
+        setNotification({ message: 'Avanço enviado com sucesso!', type: 'success' });
+      } catch (err: any) {
+        console.error(err);
+        setNotification({ message: 'Erro ao enviar dados: ' + err.message, type: 'error' });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex flex-col pb-10">
+        {/* Header */}
+        <header className="bg-slate-900 p-4 text-white shadow-md sticky top-0 z-40">
+          <div className="max-w-xl mx-auto flex justify-between items-center">
+            <div className="flex items-center space-x-2">
+              <span className="text-2xl">🏗️</span>
+              <div>
+                <h1 className="text-sm font-black tracking-tight leading-none">CONSTRUGEST PRO</h1>
+                <span className="text-[8px] uppercase tracking-wider text-indigo-300 font-bold">Apontamento de Campo</span>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 bg-indigo-800 rounded-lg text-[9px] font-black uppercase border border-indigo-700 text-indigo-100 truncate max-w-[150px]">
+              {urlTeamName}
+            </span>
+          </div>
+        </header>
+
+        {/* Content Container */}
+        <main className="flex-1 max-w-xl w-full mx-auto p-4 md:p-6 space-y-6 pb-20">
+          {teamSubmitSuccess ? (
+            <div className="bg-white p-8 rounded-2xl shadow-md border border-slate-200 text-center space-y-4 animate-in zoom-in-95">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto">✓</div>
+              <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Relatório Enviado!</h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                As informações de progresso da equipe <strong>{urlTeamName}</strong> para a semana de <strong>{currentWeekStart.toLocaleDateString('pt-BR')}</strong> foram registradas com sucesso.
+              </p>
+              <p className="text-[10px] text-slate-400">
+                O planejador responsável recebeu seus dados e irá validá-los no painel principal.
+              </p>
+              <button
+                onClick={() => setTeamSubmitSuccess(false)}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xs tracking-wider rounded-xl shadow transition"
+              >
+                Atualizar / Enviar Novamente
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Date Navigation */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex justify-between items-center">
+                <button onClick={() => setCurrentWeekStart(prev => addDays(prev, -7))} className="p-2 hover:bg-slate-100 rounded-lg transition text-slate-600">◀</button>
+                <div className="text-center">
+                  <div className="text-[8px] uppercase font-black text-slate-400">Semana de Trabalho</div>
+                  <div className="text-xs font-black text-indigo-900">
+                    {currentWeekStart.toLocaleDateString('pt-BR')} - {weekEndDate.toLocaleDateString('pt-BR')}
+                  </div>
+                </div>
+                <button onClick={() => setCurrentWeekStart(prev => addDays(prev, 7))} className="p-2 hover:bg-slate-100 rounded-lg transition text-slate-600">▶</button>
+              </div>
+
+              {/* Tasks List */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">Serviços da Semana ({teamTasks.length})</h3>
+                
+                {teamTasks.map(t => {
+                  const input = teamInputs[t.id] || { progress: 0, delayReason: '', observations: '' };
+                  const planned = t.plannedThisWeek ?? 100;
+                  const isBehind = input.progress < planned;
+
+                  return (
+                    <div key={t.id} className="bg-white p-5 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+                      {/* Task Title */}
+                      <div className="flex justify-between items-start border-b pb-2">
+                        <div>
+                          <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight leading-tight">{t.activityName}</h4>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">📍 {t.floor}</p>
+                        </div>
+                        <span className="px-2 py-0.5 bg-slate-100 border text-[9px] font-black text-slate-500 rounded-md uppercase">
+                          Meta: {planned}%
+                        </span>
+                      </div>
+
+                      {/* Progress input */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-black uppercase text-slate-400">Progresso Executado na Semana (%)</label>
+                        <select
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                          value={input.progress}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setTeamInputs({
+                              ...teamInputs,
+                              [t.id]: { ...input, progress: val }
+                            });
+                          }}
+                        >
+                          {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(p => (
+                            <option key={p} value={p}>{p}%</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Delay Reason - only shown if progress < planned */}
+                      {isBehind && (
+                        <div className="space-y-1.5 animate-in fade-in duration-200">
+                          <label className="block text-[9px] font-black uppercase text-amber-600 flex items-center gap-1">
+                            <span>⚠️</span> Motivo do Atraso
+                          </label>
+                          <select
+                            className="w-full p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            value={input.delayReason}
+                            onChange={(e) => {
+                              setTeamInputs({
+                                ...teamInputs,
+                                [t.id]: { ...input, delayReason: e.target.value }
+                              });
+                            }}
+                          >
+                            <option value="">-- Selecione o Motivo --</option>
+                            {delayReasons.map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Observations input */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[9px] font-black uppercase text-slate-400">Observações / Comentários</label>
+                        <input
+                          type="text"
+                          placeholder="EX: Aguardando liberação de material..."
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                          value={input.observations}
+                          onChange={(e) => {
+                            setTeamInputs({
+                              ...teamInputs,
+                              [t.id]: { ...input, observations: e.target.value }
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {teamTasks.length === 0 && (
+                  <div className="bg-white p-12 text-center border border-slate-200 rounded-2xl shadow-xs">
+                    <p className="text-xs text-slate-400 font-bold uppercase italic">Nenhum serviço planejado para a sua equipe nesta semana.</p>
+                  </div>
+                )}
+              </div>
+
+              {teamTasks.length > 0 && (
+                <button
+                  onClick={handleSubmitTeamReport}
+                  className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xs tracking-wider rounded-xl shadow-md transition transform active:scale-95 flex items-center justify-center gap-2 cursor-pointer animate-in fade-in"
+                >
+                  <span>📤 Enviar Dados de Avanço</span>
+                </button>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+    );
+  };
+
+  if (isTeamMode) {
+    if (loading) {
+      return (
+        <div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white font-sans">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm font-bold tracking-widest text-indigo-200 uppercase animate-pulse">Carregando painel da equipe...</p>
+          </div>
+        </div>
+      );
+    }
+    return renderTeamInputScreen();
+  }
 
   if (loading) {
     return (
@@ -3530,6 +3914,76 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
             <div className="flex justify-end space-x-2">
               <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition">Cancelar</button>
               <button onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, isOpen: false }); }} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition">Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Share Modal */}
+      {whatsappModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 space-y-4">
+            <div className="flex items-center space-x-2 text-indigo-600 mb-2">
+              <span className="text-xl">💬</span>
+              <h3 className="font-black text-sm uppercase tracking-wider">Enviar para WhatsApp</h3>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Selecionar Equipa</label>
+                <select
+                  className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none uppercase"
+                  value={whatsappModal.teamName}
+                  onChange={(e) => {
+                    const selectedTeam = e.target.value;
+                    const text = generateWhatsappMessage(selectedTeam);
+                    setWhatsappModal({ ...whatsappModal, teamName: selectedTeam, text });
+                  }}
+                >
+                  {teams.map(team => (
+                    <option key={team} value={team}>{team}</option>
+                  ))}
+                </select>
+              </div>
+
+              {whatsappModal.teamName && (
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <div className="flex justify-between items-center text-[9px] font-black text-slate-400 uppercase tracking-tight mb-1">
+                    <span>Telefone Cadastrado</span>
+                    <span className="text-indigo-600 font-mono">{teamPhones[whatsappModal.teamName] || 'Não cadastrado'}</span>
+                  </div>
+                  {!teamPhones[whatsappModal.teamName] && (
+                    <div className="text-[10px] text-amber-600 font-bold leading-tight">
+                      ⚠️ Nenhum telefone cadastrado para esta equipa. Adicione um nas Configurações ou você terá que digitar o telefone no WhatsApp manualmente.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Conteúdo da Mensagem</label>
+                <textarea
+                  rows={8}
+                  className="w-full p-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-slate-700 bg-slate-50"
+                  value={whatsappModal.text}
+                  onChange={(e) => setWhatsappModal({ ...whatsappModal, text: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setWhatsappModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg transition"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={handleSendWhatsapp}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition"
+              >
+                Enviar via WhatsApp
+              </button>
             </div>
           </div>
         </div>

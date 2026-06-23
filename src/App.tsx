@@ -957,27 +957,40 @@ const App = () => {
       const newCache = { ...weatherCache };
       let changed = false;
 
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const activeDaysInRange = [];
       for (let i = 0; i < 5; i++) {
         const dayDate = addDays(monday, i);
+        const diffTime = dayDate.getTime() - todayStart.getTime();
+        const diffDays = Math.round(diffTime / 86400000);
+        if (diffDays >= -15 && diffDays <= 15) {
+          activeDaysInRange.push(dayDate);
+        }
+      }
+
+      if (activeDaysInRange.length === 0) return;
+
+      activeDaysInRange.forEach(dayDate => {
         const dayStr = toISODate(dayDate);
         const cacheKey = `${projectCity.trim().toLowerCase()}_${dayStr}`;
         if (!weatherCache[cacheKey]) {
           daysToFetch.push(dayStr);
         }
-      }
+      });
 
       if (daysToFetch.length === 0) return;
 
       if (!weatherApiKey) {
-        for (let i = 0; i < 5; i++) {
-          const dayDate = addDays(monday, i);
+        activeDaysInRange.forEach(dayDate => {
           const dayStr = toISODate(dayDate);
           const cacheKey = `${projectCity.trim().toLowerCase()}_${dayStr}`;
           if (!newCache[cacheKey]) {
             newCache[cacheKey] = generateMockWeather(projectCity, dayStr);
             changed = true;
           }
-        }
+        });
         if (changed) {
           setWeatherCache(newCache);
           saveToDB(floors, allFloorsData, history, weights, planning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices, teamPhones, urlUserId, projectCity, weatherApiKey, newCache);
@@ -987,8 +1000,9 @@ const App = () => {
 
       setWeatherLoading(true);
       try {
-        const startDate = toISODate(monday);
-        const endDate = toISODate(addDays(monday, 4));
+        const sortedDates = [...activeDaysInRange].sort((a, b) => a.getTime() - b.getTime());
+        const startDate = toISODate(sortedDates[0]);
+        const endDate = toISODate(sortedDates[sortedDates.length - 1]);
         const url = `https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${encodeURIComponent(projectCity)}/${startDate}/${endDate}?unitGroup=metric&key=${weatherApiKey}&contentType=json&lang=pt`;
         
         const res = await fetch(url);
@@ -1019,15 +1033,14 @@ const App = () => {
       } catch (err) {
         console.error("Error fetching weather:", err);
         setNotification({ message: "Erro ao consultar clima na API. Usando dados locais.", type: "error" });
-        for (let i = 0; i < 5; i++) {
-          const dayDate = addDays(monday, i);
+        activeDaysInRange.forEach(dayDate => {
           const dayStr = toISODate(dayDate);
           const cacheKey = `${projectCity.trim().toLowerCase()}_${dayStr}`;
           if (!newCache[cacheKey]) {
             newCache[cacheKey] = generateMockWeather(projectCity, dayStr);
             changed = true;
           }
-        }
+        });
         if (changed) {
           setWeatherCache(newCache);
         }
@@ -1038,6 +1051,7 @@ const App = () => {
 
     loadWeather();
   }, [currentWeekStart, projectCity, weatherApiKey, isTeamMode]);
+
 
 
   const saveToDB = async (
@@ -3257,13 +3271,22 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                             {['S', 'T', 'Q', 'Q', 'S'].map((dayChar, idx) => {
                               const dayDate = addDays(currentWeekStart, idx);
                               const dayStr = toISODate(dayDate);
+                              
+                              const todayStart = new Date();
+                              todayStart.setHours(0, 0, 0, 0);
+                              const diffTime = dayDate.getTime() - todayStart.getTime();
+                              const diffDays = Math.round(diffTime / 86400000);
+                              const isWithinRange = diffDays >= -15 && diffDays <= 15;
+
                               const cacheKey = `${projectCity.trim().toLowerCase()}_${dayStr}`;
-                              const weather = weatherCache[cacheKey];
-                              const weatherEmoji = weather ? getWeatherEmoji(weather.icon) : '☀️';
-                              const tempInfo = weather ? `${weather.conditions} (${weather.tempMin}°C - ${weather.tempMax}°C)` : 'Sem dados';
+                              const weather = isWithinRange ? weatherCache[cacheKey] : null;
+                              
+                              const weatherEmoji = isWithinRange ? (weather ? getWeatherEmoji(weather.icon) : '☀️') : '';
+                              const tempInfo = weather ? `${weather.conditions} (${weather.tempMin}°C - ${weather.tempMax}°C)` : (isWithinRange ? 'Carregando...' : 'Fora do período de 15 dias');
+                              
                               return (
-                                <div key={idx} className="flex flex-col items-center w-8 group relative cursor-help" title={`${dayChar} (${formatDateBR(dayDate.toISOString())}) - Clima: ${tempInfo}`}>
-                                  <span className="text-[13px] leading-none mb-0.5">{weatherEmoji}</span>
+                                <div key={idx} className="flex flex-col items-center w-8 group relative cursor-help" title={`${dayChar} (${formatDateBR(dayDate.toISOString())})${isWithinRange ? ` - Clima: ${tempInfo}` : ''}`}>
+                                  <span className="text-[13px] leading-none mb-0.5 select-none">{weatherEmoji || '\u00a0'}</span>
                                   <span className="text-[8px] font-black text-slate-400">{dayChar}</span>
                                 </div>
                               );

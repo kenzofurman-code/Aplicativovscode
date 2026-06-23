@@ -918,53 +918,89 @@ const App = () => {
       const dateB = b && b.timestamp ? new Date(b.timestamp).getTime() : 0;
       return (Number.isNaN(dateA) ? 0 : dateA) - (Number.isNaN(dateB) ? 0 : dateB);
     });
-    const stateTracker: Record<string, any> = {}; 
 
     sortedHistory.forEach(record => {
       if (!record) return;
       const floor = record.floor || 'Sem Pavimento';
       const macro = record.sectionId || 'Sem Macro';
       const itemId = record.itemId || 'Sem Item';
-      const newPct = record.newPercent || 0;
       
       const recDate = record.timestamp ? new Date(record.timestamp) : new Date();
       const validDate = isNaN(recDate.getTime()) ? new Date() : recDate;
       const weekStr = getWeekStartDate(validDate).toISOString().split('T')[0];
 
-      if (!stateTracker[floor]) stateTracker[floor] = {};
-      if (!stateTracker[floor][macro]) stateTracker[floor][macro] = {};
-      stateTracker[floor][macro][itemId] = newPct;
-
-      const macroKey = `${floor} - ${macro}`;
-      if (!map[macroKey]) {
-        map[macroKey] = { floor, sectionTitle: getMacroTitle(macro), sectionId: macro, weeks: {}, lastPct: 0 };
+      // Group by macroactivity (sectionId) first
+      if (!map[macro]) {
+        map[macro] = { 
+          sectionId: macro, 
+          sectionTitle: getMacroTitle(macro), 
+          floors: {} 
+        };
       }
-      if (!map[macroKey].weeks[weekStr]) {
-        map[macroKey].weeks[weekStr] = { dateStr: formatDateBR(weekStr), services: [], macroDelta: 0, macroPercent: 0 };
+      
+      // Inside macroactivity, group by floor
+      if (!map[macro].floors[floor]) {
+        map[macro].floors[floor] = { 
+          floor, 
+          weeks: {} 
+        };
       }
-      map[macroKey].weeks[weekStr].services.push({ name: record.itemName || 'Sem Nome', delta: Number(record.progressAchieved) || 0 });
-    });
 
-    Object.keys(map).forEach(mKey => {
-      const macroData = map[mKey];
-      const totalItems = allFloorsData[macroData.floor]?.[macroData.sectionId]?.items?.length || 1;
-      let cumulativeMacroPct = 0;
-      const sortedWeeks = Object.keys(macroData.weeks).sort();
-      const changes = [];
-
-      sortedWeeks.forEach(wKey => {
-        const weekData = macroData.weeks[wKey];
-        const totalItemDelta = (weekData.services || []).reduce((sum, s) => sum + (Number(s.delta) || 0), 0);
-        const weekMacroDelta = totalItemDelta / totalItems;
-        cumulativeMacroPct += weekMacroDelta;
-        weekData.macroDelta = weekMacroDelta;
-        weekData.macroPercent = cumulativeMacroPct;
-        if (weekMacroDelta !== 0) changes.push(weekData);
+      if (!map[macro].floors[floor].weeks[weekStr]) {
+        map[macro].floors[floor].weeks[weekStr] = { 
+          dateStr: formatDateBR(weekStr), 
+          services: [], 
+          macroDelta: 0, 
+          macroPercent: 0 
+        };
+      }
+      
+      map[macro].floors[floor].weeks[weekStr].services.push({ 
+        name: record.itemName || 'Sem Nome', 
+        delta: Number(record.progressAchieved) || 0 
       });
-      macroData.changes = changes;
     });
 
-    return (Object.values(map) as any[]).filter(m => m.changes && m.changes.length > 0);
+    const result = [];
+    Object.keys(map).forEach(mId => {
+      const macroData = map[mId];
+      const floorsList = [];
+
+      Object.keys(macroData.floors).forEach(fKey => {
+        const floorData = macroData.floors[fKey];
+        const totalItems = allFloorsData[floorData.floor]?.[mId]?.items?.length || 1;
+        let cumulativeMacroPct = 0;
+        const sortedWeeks = Object.keys(floorData.weeks).sort();
+        const changes = [];
+
+        sortedWeeks.forEach(wKey => {
+          const weekData = floorData.weeks[wKey];
+          const totalItemDelta = (weekData.services || []).reduce((sum, s) => sum + (Number(s.delta) || 0), 0);
+          const weekMacroDelta = totalItemDelta / totalItems;
+          cumulativeMacroPct += weekMacroDelta;
+          weekData.macroDelta = weekMacroDelta;
+          weekData.macroPercent = cumulativeMacroPct;
+          if (weekMacroDelta !== 0) changes.push(weekData);
+        });
+
+        if (changes.length > 0) {
+          floorsList.push({
+            floor: floorData.floor,
+            changes
+          });
+        }
+      });
+
+      if (floorsList.length > 0) {
+        result.push({
+          sectionId: mId,
+          sectionTitle: macroData.sectionTitle,
+          floors: floorsList
+        });
+      }
+    });
+
+    return result;
   }, [history, allFloorsData]);
 
   const filteredGiantPlanningTasks = useMemo(() => {
@@ -1058,8 +1094,17 @@ const App = () => {
       const oldVal = itemBefore.actualPercent || 0;
       const newVal = itemAfter.actualPercent || 0;
       if (newVal !== oldVal) {
+        const now = new Date();
+        const weekDate = new Date(task.weekId);
+        let timestampVal = now.toISOString();
+        if (!isNaN(weekDate.getTime())) {
+          // Set the date to task.weekId Monday date, but keep the current time (so it sorts correctly)
+          weekDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+          timestampVal = weekDate.toISOString();
+        }
+
         updatedHistory.push({
-          timestamp: new Date().toISOString(), floor: task.floor, sectionId: sectionKey, sectionTitle: getMacroTitle(sectionKey),
+          timestamp: timestampVal, floor: task.floor, sectionId: sectionKey, sectionTitle: getMacroTitle(sectionKey),
           itemId: task.itemId, itemName: itemAfter.name, progressAchieved: newVal - oldVal, 
           oldPercent: oldVal, newPercent: newVal, userId
         });
@@ -2100,37 +2145,46 @@ const App = () => {
 
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200">
         <h3 className="text-sm font-black text-slate-800 uppercase mb-4 flex items-center gap-2"><span>🔄</span> Evolução e Variação Acumulada por Pacote (Histórico Geral)</h3>
-        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
           {(macroEvolutionHistory || []).map((macro, idx) => (
-            <div key={idx} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-              <div className="flex justify-between items-start">
-                <div><span className="text-[9px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded uppercase tracking-wider">{macro?.sectionTitle}</span><h4 className="text-xs font-black text-slate-800 uppercase mt-1">{macro?.floor}</h4></div>
-                <div className="text-right"><span className="text-xs font-black text-emerald-600">Avanço Histórico do Pacote</span></div>
+            <div key={idx} className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+              <div className="flex justify-between items-center border-b pb-2">
+                <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded uppercase tracking-wider">{macro?.sectionTitle}</span>
+                <span className="text-[10px] font-black text-slate-400 uppercase">Avanço Histórico do Pacote</span>
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap pt-2">
-                <span className="text-[10px] font-bold text-slate-400">0%</span>
-                {(macro?.changes || []).map((change, cIdx) => {
-                  const changeDelta = Number(change?.delta) || 0;
-                  const isDeltaNegative = 0 > changeDelta;
-                  return (
-                    <React.Fragment key={cIdx}>
-                      <span className="text-slate-300">→</span>
-                      <div className="bg-slate-800 px-2 py-1 rounded text-center cursor-help transition-shadow hover:shadow-md relative group">
-                        <div className={`text-[9px] font-black ${isDeltaNegative ? 'text-rose-400' : 'text-emerald-400'}`}>{isDeltaNegative ? '' : '+'}{changeDelta.toFixed(1)}%</div>
-                        <div className="text-[8px] text-slate-400">{change?.dateStr}</div>
-                        <div className="opacity-0 group-hover:opacity-100 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-[10px] p-3 rounded shadow-xl whitespace-nowrap z-10 transition-opacity border border-slate-700">
-                          <p className="font-bold text-indigo-300 border-b border-slate-700 pb-1 mb-1">Serviços na Semana:</p>
-                          {(change?.services || []).map((s, sIdx) => {
-                            const sDelta = Number(s?.delta) || 0;
-                            const sIsNeg = 0 > sDelta;
-                            return <div key={sIdx} className="flex justify-between gap-4"><span>{s?.name || 'Sem Nome'}</span><span className={sIsNeg ? 'text-rose-400' : 'text-emerald-400'}>{!sIsNeg ? '+' : ''}{sDelta.toFixed(1)}%</span></div>;
-                          })}
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
-                        </div>
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
+              <div className="space-y-3 divide-y divide-slate-100">
+                {(macro?.floors || []).map((fData, fIdx) => (
+                  <div key={fIdx} className={`flex flex-col sm:flex-row sm:items-center gap-3 ${fIdx > 0 ? 'pt-3' : ''}`}>
+                    <div className="sm:w-20 shrink-0">
+                      <span className="text-xs font-black text-slate-700 uppercase">{fData.floor}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                      <span className="text-[10px] font-bold text-slate-400">0%</span>
+                      {(fData?.changes || []).map((change, cIdx) => {
+                        const changeDelta = Number(change?.delta) || 0;
+                        const isDeltaNegative = 0 > changeDelta;
+                        return (
+                          <React.Fragment key={cIdx}>
+                            <span className="text-slate-300">→</span>
+                            <div className="bg-slate-800 px-2.5 py-1.5 rounded-lg text-center cursor-help transition-all hover:shadow-md hover:-translate-y-0.5 relative group">
+                              <div className={`text-[9px] font-black ${isDeltaNegative ? 'text-rose-400' : 'text-emerald-400'}`}>{isDeltaNegative ? '' : '+'}{changeDelta.toFixed(1)}%</div>
+                              <div className="text-[8px] text-slate-400 font-mono">{change?.dateStr}</div>
+                              <div className="opacity-0 group-hover:opacity-100 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-900 text-white text-[10px] p-3 rounded shadow-xl whitespace-nowrap z-10 transition-opacity border border-slate-700">
+                                <p className="font-bold text-indigo-300 border-b border-slate-700 pb-1 mb-1">Serviços na Semana:</p>
+                                {(change?.services || []).map((s, sIdx) => {
+                                  const sDelta = Number(s?.delta) || 0;
+                                  const sIsNeg = 0 > sDelta;
+                                  return <div key={sIdx} className="flex justify-between gap-4"><span>{s?.name || 'Sem Nome'}</span><span className={sIsNeg ? 'text-rose-400' : 'text-emerald-400'}>{!sIsNeg ? '+' : ''}{sDelta.toFixed(1)}%</span></div>;
+                                })}
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}

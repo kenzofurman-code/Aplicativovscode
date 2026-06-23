@@ -1811,49 +1811,17 @@ const App = () => {
         </div>
 
         {/* Middle mockup dashboard layout */}
-        <div className="flex bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden min-h-[600px]">
-          {/* Left vertical sidebar */}
-          <div className="w-16 bg-slate-900 flex flex-col items-center py-6 border-r border-slate-800 flex-shrink-0">
-            {/* Company/Brand logo icon */}
-            <div className="mb-8">
-              <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-emerald-400">
-                <path d="M12 4V28M4 12H28M8 8L24 24M8 24L24 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-100 p-6 flex flex-col gap-6 min-h-[600px] bg-slate-50">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4 gap-4">
+            <div>
+              <h2 className="text-xl font-black text-slate-800 tracking-tight">
+                Situação da obra em <span className="text-blue-600 capitalize">{analysisMonth}</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1 uppercase font-bold tracking-wider">
+                Mapeamento Físico Semanal por Pavimento e Pacote
+              </p>
             </div>
-            
-            {/* Tower selectors */}
-            <div className="flex flex-col gap-6 w-full items-center">
-              {['Bloom', 'Glow', 'Take'].map(tower => {
-                const isActive = activeTower === tower;
-                return (
-                  <button
-                    key={tower}
-                    onClick={() => setActiveTower(tower)}
-                    className={`w-full py-3 text-[10px] font-black uppercase tracking-wider text-center transition-all duration-300 relative border-l-4 ${
-                      isActive 
-                        ? 'border-emerald-400 text-white bg-slate-800' 
-                        : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/40'
-                    }`}
-                  >
-                    {tower}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Main dashboard content */}
-          <div className="flex-1 bg-slate-50 p-6 flex flex-col gap-6 overflow-y-auto">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4 gap-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-800 tracking-tight">
-                  Situação da obra em <span className="text-blue-600 capitalize">{analysisMonth}</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-1 uppercase font-bold tracking-wider">
-                  Torre {activeTower} &bull; Mapeamento Físico Semanal por Pavimento e Pacote
-                </p>
-              </div>
 
               {/* Week Navigation */}
               <div className="flex items-center space-x-2 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
@@ -2100,7 +2068,6 @@ const App = () => {
               </div>
             </div>
           </div>
-        </div>
 
         {/* Bottom charts (PPC & Delay analysis) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

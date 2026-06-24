@@ -4324,33 +4324,58 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
     }
   };
 
+  const compressAndSetImage = (file: File, isEdit: boolean) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        const MAX_SIZE = 600;
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const base64 = canvas.toDataURL('image/jpeg', 0.6);
+          if (isEdit) {
+            setEditProjImageUrl(base64);
+          } else {
+            setNewProjImageUrl(base64);
+          }
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setNotification({ message: 'A imagem é muito grande. Escolha uma imagem de até 2MB.', type: 'error' });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewProjImageUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      compressAndSetImage(file, false);
     }
   };
 
   const handleEditImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setNotification({ message: 'A imagem é muito grande. Escolha uma imagem de até 2MB.', type: 'error' });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditProjImageUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      compressAndSetImage(file, true);
     }
   };
 

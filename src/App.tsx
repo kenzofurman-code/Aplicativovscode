@@ -3492,7 +3492,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
             />
           </div>
         </div>
-        <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {(macroEvolutionHistory || []).filter(macro => !macroEvolutionSearch || (macro?.sectionTitle || '').toLowerCase().includes(macroEvolutionSearch.toLowerCase())).map((macro, idx) => (
             <div key={idx} className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">

@@ -2498,19 +2498,19 @@ ${obsSummary || 'Nenhuma observação registrada.'}
 
 Gere um relatório com as seguintes seções:
 
-## 📊 Resumo Executivo
+## Resumo Executivo
 (2-3 frases sobre o desempenho geral da semana)
 
-## ✅ Pontos Positivos
+## Pontos Positivos
 (lista com o que foi bem executado)
 
-## ⚠️ Problemas e Riscos Identificados
+## Problemas e Riscos Identificados
 (análise dos desvios, causas prováveis e impactos)
 
-## 📋 Observações de Campo
+## Observações de Campo
 (análise das observações registradas, se houver)
 
-## 💡 Recomendações para a Próxima Semana
+## Recomendações para a Próxima Semana
 (ações concretas e priorizadas)
 
 Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máximo de 500 palavras.`;
@@ -2648,11 +2648,10 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-5 flex justify-between items-center border-b border-slate-100 bg-slate-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl opacity-80">🤖</div>
                   <div>
                     <h3 className="text-sm font-black text-slate-800 tracking-tight uppercase">Análise da semana</h3>
                     <p className="text-[10px] text-slate-500 mt-0.5 font-bold">
-                      Gerada automaticamente pelo Google Gemini
+                      Gerada automaticamente
                     </p>
                   </div>
                 </div>
@@ -3352,7 +3351,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
   const renderInfographic = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200">
-        <h3 className="text-sm font-black text-slate-800 uppercase mb-4 flex items-center gap-2"><span>📈</span> Evolução Semanal de PPC do Projeto</h3>
+        <h3 className="text-sm font-black text-slate-800 uppercase mb-4">Evolução Semanal de PPC do Projeto</h3>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           {(ppcHistory || []).map((h, i) => {
             const ppcVal = typeof h?.ppc === 'number' ? h.ppc : parseFloat(h?.ppc) || 0;
@@ -3371,7 +3370,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-4">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b pb-4">
           <div>
-            <h3 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2"><span>📊</span> Tabela Consolidada de Planeamento Semanal (Histórico Geral)</h3>
+            <h3 className="text-sm font-black text-slate-800 uppercase">Tabela Consolidada de Planeamento Semanal (Histórico Geral)</h3>
           </div>
           <button onClick={handleExportCSV} className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg flex items-center gap-2 transition"><span>📥</span> Exportar para Excel (.csv)</button>
         </div>
@@ -3481,7 +3480,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-          <h3 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2"><span>🔄</span> Evolução e Variação Acumulada por Pacote (Histórico Geral)</h3>
+          <h3 className="text-sm font-black text-slate-800 uppercase">Evolução e Variação Acumulada por Pacote (Histórico Geral)</h3>
           <div className="relative w-full sm:w-64">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none">🔍</span>
             <input
@@ -3763,7 +3762,6 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         <header className="bg-slate-900 p-4 text-white shadow-md sticky top-0 z-40">
           <div className="max-w-xl mx-auto flex justify-between items-center">
             <div className="flex items-center space-x-2">
-              <span className="text-2xl">🏗️</span>
               <div>
                 <h1 className="text-sm font-black tracking-tight leading-none">PLANEJAMENTO DE CURTO PRAZO</h1>
                 <span className="text-[8px] uppercase tracking-wider text-indigo-300 font-bold">Apontamento de Campo</span>
@@ -4002,7 +4000,6 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         {/* Glass Container */}
         <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 p-8 rounded-3xl shadow-2xl max-w-sm w-full space-y-6 relative z-10 text-center animate-in zoom-in-95 duration-500">
           <div className="space-y-2">
-            <span className="text-4xl animate-bounce inline-block">🏗️</span>
             <h2 className="text-xl font-black uppercase tracking-tight text-white">PLANEJAMENTO DE CURTO PRAZO</h2>
             <p className="text-[10px] text-indigo-300 uppercase tracking-widest font-bold">Identificação de Operador</p>
           </div>
@@ -4055,7 +4052,6 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
       <header className="bg-slate-900 p-4 text-white shadow-xl sticky top-0 z-40">
         <div className="max-w-[1600px] w-full mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex items-center space-x-3">
-            <span className="text-3xl">🏗️</span>
             <div><h1 className="text-lg font-black tracking-tight leading-none">PLANEJAMENTO DE CURTO PRAZO</h1><span className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold">Gestão e controle de obras</span></div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -4088,12 +4084,12 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
       <main className="max-w-[1600px] w-full mx-auto p-4 md:p-6 pb-24">
         <nav className="flex gap-1 border-b border-slate-300 mb-6 overflow-x-auto pb-1 no-scrollbar sticky top-[68px] bg-slate-50 z-30 pt-2">
-          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>🏠 Painel</button>
-          <button onClick={() => setActiveTab('cronograma-inicial')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'cronograma-inicial' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>📅 Cronograma</button>
-          <button onClick={() => setActiveTab('planning')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'planning' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>🗓️ Planeamento Semanal</button>
-          <button onClick={() => setActiveTab('visualization')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'visualization' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>📊 Matriz Geral</button>
-          <button onClick={() => setActiveTab('infographic')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'infographic' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>📋 Histórico & PPC</button>
-          <button onClick={() => setActiveTab('config')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'config' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>⚙️ Configurações</button>
+          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Painel</button>
+          <button onClick={() => setActiveTab('cronograma-inicial')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'cronograma-inicial' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Cronograma</button>
+          <button onClick={() => setActiveTab('planning')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'planning' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Planeamento Semanal</button>
+          <button onClick={() => setActiveTab('visualization')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'visualization' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Matriz Geral</button>
+          <button onClick={() => setActiveTab('infographic')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'infographic' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Histórico & PPC</button>
+          <button onClick={() => setActiveTab('config')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'config' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Configurações</button>
         </nav>
 
         {activeTab === 'dashboard' && renderDashboard()}
@@ -4292,7 +4288,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
       {finalizeModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
-            <div className="flex items-center space-x-2 text-emerald-600 mb-3"><span className="text-2xl">🏁</span><h3 className="font-black text-sm uppercase tracking-wider">Finalizar Semana de Trabalho</h3></div>
+            <div className="flex items-center space-x-2 text-emerald-600 mb-3"><h3 className="font-black text-sm uppercase tracking-wider">Finalizar Semana de Trabalho</h3></div>
             <p className="text-xs text-slate-600 mb-4 leading-relaxed">Você está a concluir as atividades planeadas para a semana de <strong className="text-indigo-900">{formatDateBR(currentWeekStart)}</strong>. Isso guardará o PPC finalizado de <strong className="text-emerald-600">{currentWeekPpcStats.percent.toFixed(1)}%</strong> diretamente na base de dados.</p>
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 mb-6">
               <label className="flex items-start space-x-3 cursor-pointer">

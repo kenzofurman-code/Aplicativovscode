@@ -3492,6 +3492,14 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
     </div>
   );
 
+  const renderDetalhamentoPpc = () => (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200 text-center py-12">
+        <p className="text-sm font-bold uppercase tracking-wider text-slate-400 italic">Espaço reservado para o Detalhamento PPC.</p>
+      </div>
+    </div>
+  );
+
   const renderInfographic = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200">
@@ -4239,7 +4247,8 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
           <button onClick={() => setActiveTab('cronograma-inicial')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'cronograma-inicial' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Cronograma</button>
           <button onClick={() => setActiveTab('planning')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'planning' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Planeamento Semanal</button>
           <button onClick={() => setActiveTab('visualization')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'visualization' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Matriz Geral</button>
-          <button onClick={() => setActiveTab('infographic')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'infographic' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Histórico & PPC</button>
+          <button onClick={() => setActiveTab('detalhamento-ppc')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'detalhamento-ppc' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Detalhamento PPC</button>
+          <button onClick={() => setActiveTab('historico-andamento')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'historico-andamento' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Histórico andamento</button>
           <button onClick={() => setActiveTab('config')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'config' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Configurações</button>
         </nav>
 
@@ -4247,7 +4256,8 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         {activeTab === 'cronograma-inicial' && renderCronograma()}
         {activeTab === 'planning' && renderPlanning()}
         {activeTab === 'visualization' && renderVisualization()}
-        {activeTab === 'infographic' && renderInfographic()}
+        {activeTab === 'detalhamento-ppc' && renderDetalhamentoPpc()}
+        {activeTab === 'historico-andamento' && renderInfographic()}
         {activeTab === 'config' && renderConfig()}
       </main>
 

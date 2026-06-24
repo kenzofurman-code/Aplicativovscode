@@ -2975,7 +2975,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
 
   const renderPlanning = () => (
-    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300 h-[calc(100vh-190px)] overflow-y-auto pr-2 custom-scrollbar pb-6">
       <div className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
         <div className="space-y-2">
           <span className="px-3 py-1 bg-indigo-800 text-[10px] font-black tracking-wider uppercase rounded-full border border-indigo-700 text-indigo-300">KPI Produtividade</span>
@@ -3058,7 +3058,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-xs text-left border-collapse">
-            <thead className="sticky top-[118px] z-20 bg-slate-800">
+            <thead className="sticky top-0 z-20 bg-slate-800">
               <tr className="bg-slate-800 text-white uppercase text-[9px] tracking-tight">
                 {[
                   { label: 'Serviço / Pavimento', key: 'activityName', cls: 'w-44' },
@@ -4099,7 +4099,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         </div>
       </header>
 
-      <main className="max-w-[1600px] w-full mx-auto p-4 md:p-6 pb-24">
+      <main className={`max-w-[1600px] w-full mx-auto p-4 md:p-6 ${activeTab === 'planning' ? 'pb-4' : 'pb-24'}`}>
         <nav className="flex gap-1 border-b border-slate-300 mb-6 overflow-x-auto pb-1 no-scrollbar sticky top-[68px] bg-slate-50 z-30 pt-2">
           <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Painel</button>
           <button onClick={() => setActiveTab('cronograma-inicial')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'cronograma-inicial' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Cronograma</button>

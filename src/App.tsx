@@ -3578,16 +3578,16 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         
         {/* Card 1: Gestão de Pavimentos / Lotes */}
         <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-4">
-          <h2 className="text-md font-black uppercase border-b pb-2 text-slate-800">1. Gestão de Pavimentos / Lotes</h2>
+          <h2 className="text-sm font-black uppercase border-b pb-2 text-slate-800 tracking-wider">1. Gestão de Pavimentos / Lotes</h2>
           <div className="flex gap-2">
-            <input type="text" placeholder="EX: TÉRREO, SUBSOLO..." className="flex-1 p-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase font-bold" value={newFloorName} onChange={(e) => setNewFloorName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddFloor()} />
-            <button onClick={handleAddFloor} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-slate-900 transition">ADICIONAR</button>
+            <input type="text" placeholder="EX: TÉRREO, SUBSOLO..." className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition outline-none uppercase font-bold text-slate-800" value={newFloorName} onChange={(e) => setNewFloorName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddFloor()} />
+            <button onClick={handleAddFloor} className="bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-slate-900 transition shadow-sm">ADICIONAR</button>
           </div>
           <div className="flex flex-wrap gap-2 mt-4">
             {floors.map(floor => (
-              <div key={floor} className="flex items-center space-x-2 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-700 border">
+              <div key={floor} className="flex items-center space-x-2 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-700 border border-slate-200">
                 <span>{floor}</span>
-                <button onClick={() => triggerConfirm('Remover Pavimento', `Tem a certeza que deseja excluir "${floor}"?`, () => handleDeleteFloor(floor))} className="text-red-500 hover:text-red-700 font-black ml-1">&times;</button>
+                <button onClick={() => triggerConfirm('Remover Pavimento', `Tem a certeza que deseja excluir "${floor}"?`, () => handleDeleteFloor(floor))} className="text-red-500 hover:text-red-700 font-black ml-1 text-sm">&times;</button>
               </div>
             ))}
           </div>
@@ -3596,32 +3596,32 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         {/* Card 2: Estrutura de Macroatividades e Serviços */}
         <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-6">
           <div>
-            <h2 className="text-md font-black uppercase border-b pb-2 text-slate-800">2. Estrutura de Macroatividades e Serviços</h2>
-            <div className="bg-slate-50 p-4 rounded-xl border mt-4">
-              <h3 className="text-xs font-black uppercase text-indigo-600 mb-3">Criar Novo Pacote / Etapa</h3>
+            <h2 className="text-sm font-black uppercase border-b pb-2 text-slate-800 tracking-wider">2. Estrutura de Macroatividades e Serviços</h2>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4">
+              <h3 className="text-[10px] font-black uppercase tracking-wider text-indigo-600 mb-2.5">Criar Novo Pacote / Etapa</h3>
               <div className="flex gap-2">
-                <input type="text" placeholder="EX: ALVENARIA, ACABAMENTOS..." className="flex-1 p-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase font-bold" value={newPackageName} onChange={(e) => setNewPackageName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddNewPackageConfig()} />
-                <button onClick={handleAddNewPackageConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition">CRIAR</button>
+                <input type="text" placeholder="EX: ALVENARIA, ACABAMENTOS..." className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition outline-none uppercase font-bold text-slate-800" value={newPackageName} onChange={(e) => setNewPackageName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddNewPackageConfig()} />
+                <button onClick={handleAddNewPackageConfig} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-indigo-700 transition shadow-sm">CRIAR</button>
               </div>
             </div>
           </div>
 
           <div>
-            <h3 className="text-xs font-black uppercase text-slate-600 mb-3">Adicionar Item ao Pacote Selecionado</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2.5">Adicionar Item ao Pacote Selecionado</h3>
             <div className="flex flex-wrap gap-1 mb-3">
               {allPossibleMacros.map(sId => (
-                <button key={sId} onClick={() => setActiveSection(sId)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition ${activeSection === sId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{getMacroTitle(sId)}</button>
+                <button key={sId} onClick={() => setActiveSection(sId)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition ${activeSection === sId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{getMacroTitle(sId)}</button>
               ))}
             </div>
             <div className="flex gap-2">
-              <input type="text" placeholder="EX: REBOCO, MASSA..." className="flex-1 p-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase font-bold" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddNewItemConfig()} />
-              <button onClick={handleAddNewItemConfig} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition">ADICIONAR</button>
+              <input type="text" placeholder="EX: REBOCO, MASSA..." className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition outline-none uppercase font-bold text-slate-800" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddNewItemConfig()} />
+              <button onClick={handleAddNewItemConfig} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-indigo-700 transition shadow-sm">ADICIONAR</button>
             </div>
             <div className="space-y-1.5 mt-4 border-t pt-3">
               {configItemsToDisplay.map(item => (
                 <div key={item.id} className="flex justify-between items-center p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition duration-150 text-xs">
                   <span className="font-bold text-slate-700">{item.name}</span>
-                  <button onClick={() => handleDeleteItemConfig(item)} className="text-red-500 hover:text-red-700 font-bold hover:underline">Excluir</button>
+                  <button onClick={() => handleDeleteItemConfig(item)} className="text-rose-600 hover:text-rose-700 font-black text-[10px] uppercase tracking-wider">Excluir</button>
                 </div>
               ))}
             </div>
@@ -3630,10 +3630,10 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
         {/* Card 3: Gestão de Equipas / Empreiteiros */}
         <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-4">
-          <h2 className="text-md font-black uppercase border-b pb-2 text-slate-800">3. Gestão de Equipas / Empreiteiros</h2>
+          <h2 className="text-sm font-black uppercase border-b pb-2 text-slate-800 tracking-wider">3. Gestão de Equipas / Empreiteiros</h2>
           <div className="flex gap-2 mb-4">
-            <input type="text" placeholder="Nome da Equipa..." className="flex-1 p-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none uppercase font-bold" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddTeam()} />
-            <button onClick={handleAddTeam} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition">REGISTAR</button>
+            <input type="text" placeholder="Nome da Equipa..." className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition outline-none uppercase font-bold text-slate-800" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddTeam()} />
+            <button onClick={handleAddTeam} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-indigo-700 transition shadow-sm">REGISTAR</button>
           </div>
           <div className="space-y-2">
             {teams.map(team => (
@@ -3642,11 +3642,11 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                   <div className="text-xs font-black text-slate-800 truncate uppercase">{team}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone:</span>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Telefone:</span>
                   <input
                     type="text"
                     placeholder="+55 11 99999-9999"
-                    className="w-40 p-1.5 text-[10px] border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white font-mono outline-none"
+                    className="w-36 p-1.5 text-[11px] border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-white font-bold text-slate-700 outline-none font-mono"
                     value={teamPhones[team] || ''}
                     onChange={(e) => {
                       const newPhones = { ...teamPhones, [team]: e.target.value };
@@ -3656,7 +3656,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                   />
                   <button
                     onClick={() => triggerConfirm('Remover Equipa', `Deseja realmente excluir "${team}"?`, () => handleDeleteTeam(team))}
-                    className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-700 rounded-lg transition"
+                    className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-700 rounded-lg transition text-xs"
                     title="Remover equipa"
                   >
                     🗑️
@@ -3672,16 +3672,16 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
         {/* Card 4: Padronização de Motivos de Atraso */}
         <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-4">
-          <h2 className="text-md font-black uppercase border-b pb-2 text-slate-800">4. Padronização de Motivos de Atraso</h2>
+          <h2 className="text-sm font-black uppercase border-b pb-2 text-slate-800 tracking-wider">4. Padronização de Motivos de Atraso</h2>
           <div className="flex gap-2 mb-4">
-            <input type="text" placeholder="Descrição do motivo..." className="flex-1 p-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-bold" value={newDelayReason} onChange={(e) => setNewDelayReason(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddDelayReason()} />
-            <button onClick={handleAddDelayReason} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition">REGISTAR</button>
+            <input type="text" placeholder="Descrição do motivo..." className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition outline-none font-bold text-slate-800" value={newDelayReason} onChange={(e) => setNewDelayReason(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddDelayReason()} />
+            <button onClick={handleAddDelayReason} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-indigo-700 transition shadow-sm">REGISTAR</button>
           </div>
           <div className="space-y-2">
             {delayReasons.map(reason => (
               <div key={reason} className="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700">
                 <span>{reason}</span>
-                <button onClick={() => triggerConfirm('Remover Motivo', `Deseja remover "${reason}"?`, () => handleDeleteDelayReason(reason))} className="text-red-500 hover:text-red-700 font-bold ml-1">&times;</button>
+                <button onClick={() => triggerConfirm('Remover Motivo', `Deseja remover "${reason}"?`, () => handleDeleteDelayReason(reason))} className="text-red-500 hover:text-red-700 font-black ml-1 text-sm">&times;</button>
               </div>
             ))}
           </div>
@@ -3691,32 +3691,32 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
       {/* Card 5: Configurações de Clima */}
       <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-4">
-        <h2 className="text-md font-black uppercase border-b pb-2 text-slate-800">5. Configurações de Clima (Visual Crossing Weather API)</h2>
+        <h2 className="text-sm font-black uppercase border-b pb-2 text-slate-800 tracking-wider">5. Configurações de Clima (Visual Crossing Weather API)</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Cidade do Projeto (Formato: Cidade, Estado)</label>
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Cidade do Projeto (Formato: Cidade, Estado)</label>
             <input
               type="text"
               placeholder="Ex: Curitiba, PR"
-              className="w-full p-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full p-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition outline-none text-slate-800"
               value={projectCity}
               onChange={(e) => setProjectCity(e.target.value)}
               onBlur={(e) => saveToDB(floors, allFloorsData, history, weights, planning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices, teamPhones, urlUserId, e.target.value, weatherApiKey)}
             />
           </div>
           <div>
-            <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Chave de API Visual Crossing</label>
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Chave de API Visual Crossing</label>
             <input
               type="password"
               placeholder="Digite a chave da API..."
-              className="w-full p-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+              className="w-full p-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white transition outline-none text-slate-800 font-mono"
               value={weatherApiKey}
               onChange={(e) => setWeatherApiKey(e.target.value)}
               onBlur={(e) => saveToDB(floors, allFloorsData, history, weights, planning, cronogramaInicial, teams, delayReasons, ppcHistory, matrices, teamPhones, urlUserId, projectCity, e.target.value)}
             />
           </div>
         </div>
-        <p className="text-[10px] text-slate-400 leading-relaxed font-bold">
+        <p className="text-xs text-slate-500 leading-relaxed font-medium">
           💡 Nota: Se nenhuma chave for fornecida, o aplicativo usará dados climáticos simulados deterministicamente com base no clima de {projectCity}.
         </p>
       </div>

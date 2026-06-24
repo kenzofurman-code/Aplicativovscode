@@ -2975,7 +2975,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
 
 
   const renderPlanning = () => (
-    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300 h-[calc(100vh-190px)] overflow-y-auto pr-2 custom-scrollbar pb-6">
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300 pb-6">
       <div className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
         <div className="space-y-2">
           <span className="px-3 py-1 bg-indigo-800 text-[10px] font-black tracking-wider uppercase rounded-full border border-indigo-700 text-indigo-300">KPI Produtividade</span>
@@ -3056,9 +3056,9 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <div className="overflow-x-auto md:overflow-x-visible rounded-xl border border-slate-200">
           <table className="w-full text-xs text-left border-collapse">
-            <thead className="sticky top-0 z-20 bg-slate-800">
+            <thead className="sticky top-[118px] z-20 bg-slate-800">
               <tr className="bg-slate-800 text-white uppercase text-[9px] tracking-tight">
                 {[
                   { label: 'Serviço / Pavimento', key: 'activityName', cls: 'w-44' },
@@ -3072,7 +3072,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                 ].map((col) => {
                   if (col.isWeather) {
                     return (
-                      <th key={col.label} className={`p-2 border-r border-slate-700 text-center sticky top-0 z-20 bg-slate-800 ${col.cls}`}>
+                      <th key={col.label} className={`p-2 border-r border-slate-700 text-center sticky top-[118px] z-20 bg-slate-800 ${col.cls}`}>
                         <div className="flex flex-col items-center justify-center">
                           <span className="text-[8px] text-slate-300 font-bold uppercase mb-1">Dias de Trabalho</span>
                           <div className="flex gap-1 justify-center">
@@ -3107,7 +3107,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                   return (
                     <th
                       key={col.label}
-                      className={`p-3 border-r border-slate-700 select-none sticky top-0 z-20 bg-slate-800 ${col.cls} ${col.key ? 'cursor-pointer hover:bg-slate-700 transition-colors' : ''}`}
+                      className={`p-3 border-r border-slate-700 select-none sticky top-[118px] z-20 bg-slate-800 ${col.cls} ${col.key ? 'cursor-pointer hover:bg-slate-700 transition-colors' : ''}`}
                       onClick={() => {
                         if (!col.key) return;
                         if (planningSortKey === col.key) setPlanningSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -4065,7 +4065,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 relative overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 relative overflow-x-clip">
       <header className="bg-slate-900 p-4 text-white shadow-xl sticky top-0 z-40">
         <div className="max-w-[1600px] w-full mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex items-center space-x-3">
@@ -4099,7 +4099,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
         </div>
       </header>
 
-      <main className={`max-w-[1600px] w-full mx-auto p-4 md:p-6 ${activeTab === 'planning' ? 'pb-4' : 'pb-24'}`}>
+      <main className="max-w-[1600px] w-full mx-auto p-4 md:p-6 pb-24">
         <nav className="flex gap-1 border-b border-slate-300 mb-6 overflow-x-auto pb-1 no-scrollbar sticky top-[68px] bg-slate-50 z-30 pt-2">
           <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Painel</button>
           <button onClick={() => setActiveTab('cronograma-inicial')} className={`px-4 py-3 text-xs font-black uppercase tracking-wider rounded-t-xl transition-all duration-300 whitespace-nowrap ${activeTab === 'cronograma-inicial' ? 'bg-indigo-600 text-white shadow-lg -translate-y-1' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Cronograma</button>

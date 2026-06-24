@@ -781,6 +781,14 @@ const App = () => {
   const [newProjImageUrl, setNewProjImageUrl] = useState<string>('');
   const [projectSearchQuery, setProjectSearchQuery] = useState<string>('');
 
+  // Estados para Edição de Projetos
+  const [editingProject, setEditingProject] = useState<any | null>(null);
+  const [editProjName, setEditProjName] = useState<string>('');
+  const [editProjArea, setEditProjArea] = useState<string>('');
+  const [editProjAddress, setEditProjAddress] = useState<string>('');
+  const [editProjBadges, setEditProjBadges] = useState<string>('');
+  const [editProjImageUrl, setEditProjImageUrl] = useState<string>('');
+
   // Dashboard Interatividade
   const [dashboardTargetMonth, setDashboardTargetMonth] = useState<string>(getTodayDateString().slice(0, 7));
   const [selectedDashboardFloor, setSelectedDashboardFloor] = useState<any>('');
@@ -883,11 +891,27 @@ const App = () => {
   // Carrega a lista de projetos do Firestore
   useEffect(() => {
     if (!db || !userId) return;
-    const projectsDocRef = doc(db, `artifacts/${appId}/public/data/projects_list`, 'all_projects');
+    const projectsDocRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, 'all_projects_metadata');
     const unsubscribe = onSnapshot(projectsDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        setProjects(data.list || []);
+        const rawList = data.list || [];
+        
+        // Mapeia qualquer projeto antigo com ID 'qoya' para 'projeto_principal'
+        let hasOldQoya = false;
+        const mappedList = rawList.map((p: any) => {
+          if (p.id === 'qoya') {
+            hasOldQoya = true;
+            return { ...p, id: 'projeto_principal' };
+          }
+          return p;
+        });
+
+        if (hasOldQoya) {
+          setDoc(projectsDocRef, { list: mappedList });
+        }
+        
+        setProjects(mappedList);
       } else {
         const defaultList = [
           {
@@ -918,7 +942,7 @@ const App = () => {
             imageUrl: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&auto=format&fit=crop&q=60'
           },
           {
-            id: 'qoya',
+            id: 'projeto_principal',
             name: 'QOYA',
             type: 'Obra',
             area: '16777.23',
@@ -4283,7 +4307,7 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
     
     try {
       const updatedList = [...projects, newProj];
-      const projectsDocRef = doc(db, `artifacts/${appId}/public/data/projects_list`, 'all_projects');
+      const projectsDocRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, 'all_projects_metadata');
       await setDoc(projectsDocRef, { list: updatedList });
       setProjects(updatedList);
       
@@ -4297,6 +4321,81 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
     } catch (err) {
       console.error('Error adding project:', err);
       setNotification({ message: 'Erro ao adicionar projeto.', type: 'error' });
+    }
+  };
+
+  const handleAddImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        setNotification({ message: 'A imagem é muito grande. Escolha uma imagem de até 2MB.', type: 'error' });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewProjImageUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleEditImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        setNotification({ message: 'A imagem é muito grande. Escolha uma imagem de até 2MB.', type: 'error' });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditProjImageUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleOpenEditProject = (p: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingProject(p);
+    setEditProjName(p.name);
+    setEditProjArea(p.area || '');
+    setEditProjAddress(p.address || '');
+    setEditProjBadges((p.badges || []).join(', '));
+    setEditProjImageUrl(p.imageUrl || '');
+  };
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject) return;
+    if (!editProjName.trim() || !editProjArea.trim() || !editProjAddress.trim()) {
+      setNotification({ message: 'Por favor, preencha o nome, a área e o endereço.', type: 'error' });
+      return;
+    }
+    
+    try {
+      const updatedList = projects.map(p => {
+        if (p.id === editingProject.id) {
+          return {
+            ...p,
+            name: editProjName.trim().toUpperCase(),
+            area: parseFloat(editProjArea.trim()).toFixed(2),
+            badges: editProjBadges.split(',').map(b => b.trim().toUpperCase()).filter(b => b.length > 0),
+            address: editProjAddress.trim(),
+            imageUrl: editProjImageUrl.trim()
+          };
+        }
+        return p;
+      });
+      
+      const projectsDocRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, 'all_projects_metadata');
+      await setDoc(projectsDocRef, { list: updatedList });
+      setProjects(updatedList);
+      
+      setEditingProject(null);
+      setNotification({ message: 'Projeto atualizado com sucesso!', type: 'success' });
+    } catch (err) {
+      console.error('Error updating project:', err);
+      setNotification({ message: 'Erro ao atualizar projeto.', type: 'error' });
     }
   };
 
@@ -4370,22 +4469,31 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                         <h3 className="text-sm font-black uppercase text-white tracking-tight">{p.name}</h3>
                         <p className="text-[10px] text-slate-500 italic font-medium">{p.type || 'Obra'}</p>
                       </div>
-                      <button 
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (confirm(`Deseja excluir o projeto "${p.name}"? Isso não apagará seus dados históricos do banco.`)) {
-                            const newList = projects.filter(x => x.id !== p.id);
-                            const projectsDocRef = doc(db, `artifacts/${appId}/public/data/projects_list`, 'all_projects');
-                            await setDoc(projectsDocRef, { list: newList });
-                            setProjects(newList);
-                            setNotification({ message: 'Projeto removido da lista!', type: 'success' });
-                          }
-                        }}
-                        className="text-slate-600 hover:text-rose-400 p-1 rounded transition"
-                        title="Remover projeto da lista"
-                      >
-                        <span className="text-xs">🗑️</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={(e) => handleOpenEditProject(p, e)}
+                          className="text-slate-600 hover:text-indigo-400 p-1 rounded transition cursor-pointer"
+                          title="Editar informações do projeto"
+                        >
+                          <span className="text-xs">✏️</span>
+                        </button>
+                        <button 
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Deseja excluir o projeto "${p.name}"? Isso não apagará seus dados históricos do banco.`)) {
+                              const newList = projects.filter(x => x.id !== p.id);
+                              const projectsDocRef = doc(db, `artifacts/${appId}/public/data/project_measurements`, 'all_projects_metadata');
+                              await setDoc(projectsDocRef, { list: newList });
+                              setProjects(newList);
+                              setNotification({ message: 'Projeto removido da lista!', type: 'success' });
+                            }
+                          }}
+                          className="text-slate-600 hover:text-rose-400 p-1 rounded transition cursor-pointer"
+                          title="Remover projeto da lista"
+                        >
+                          <span className="text-xs">🗑️</span>
+                        </button>
+                      </div>
                     </div>
                     
                     {/* Site Render image */}
@@ -4532,15 +4640,31 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                   <span className="block text-[8px] text-slate-500">Deixe em branco para usar as siglas padrão de equipes.</span>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">URL da Imagem de Capa (opcional)</label>
+                <div className="space-y-1.5">
+                  <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">Imagem de Capa (PNG/JPG ou URL)</label>
+                  <div className="flex gap-2">
+                    <label className="flex-1 flex flex-col items-center justify-center p-3 bg-slate-950 border border-dashed border-slate-800 hover:border-indigo-500/50 rounded-xl cursor-pointer text-slate-450 hover:text-white transition">
+                      <span className="text-[10px] uppercase font-black">📁 Selecionar Foto</span>
+                      <input 
+                        type="file" 
+                        accept="image/png, image/jpeg, image/jpg" 
+                        onChange={handleAddImageFileChange}
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
                   <input
                     type="url"
-                    placeholder="Ex: https://..."
+                    placeholder="Ou cole o link da imagem (URL)..."
                     value={newProjImageUrl}
                     onChange={e => setNewProjImageUrl(e.target.value)}
-                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder-slate-650 focus:ring-2 focus:ring-indigo-500 outline-none transition"
                   />
+                  {newProjImageUrl && (
+                    <div className="mt-2 h-16 w-full rounded-lg overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center">
+                      <img src={newProjImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-2">
@@ -4556,6 +4680,111 @@ Seja objetivo, técnico e use linguagem adequada para um gestor de obras. Máxim
                     className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[10px] tracking-wider rounded-xl shadow-lg transition active:scale-98 cursor-pointer"
                   >
                     Salvar Projeto
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Project Modal */}
+        {editingProject && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-2xl max-w-md w-full space-y-6 animate-in zoom-in-95 duration-200 text-left text-slate-200">
+              <div className="space-y-1">
+                <h3 className="text-sm font-black uppercase tracking-tight text-white">Editar Informações da Obra</h3>
+                <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Modifique os dados do projeto abaixo</p>
+              </div>
+
+              <form onSubmit={handleUpdateProject} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">Nome da Obra</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: QOYA, PACE..."
+                    value={editProjName}
+                    onChange={e => setEditProjName(e.target.value)}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">Área Privativa / Construída (m²)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="Ex: 16777.23"
+                    value={editProjArea}
+                    onChange={e => setEditProjArea(e.target.value)}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">Endereço Completo</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: R. Buenos Aires, 572 - Curitiba..."
+                    value={editProjAddress}
+                    onChange={e => setEditProjAddress(e.target.value)}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">Siglas das Equipes (badges, separadas por vírgula)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: PF, PE, PK, RT, AO..."
+                    value={editProjBadges}
+                    onChange={e => setEditProjBadges(e.target.value)}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder-slate-650 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[9px] uppercase tracking-wider text-slate-400 font-black">Imagem de Capa (PNG/JPG ou URL)</label>
+                  <div className="flex gap-2">
+                    <label className="flex-1 flex flex-col items-center justify-center p-3 bg-slate-950 border border-dashed border-slate-800 hover:border-indigo-500/50 rounded-xl cursor-pointer text-slate-450 hover:text-white transition">
+                      <span className="text-[10px] uppercase font-black">📁 Selecionar Foto</span>
+                      <input 
+                        type="file" 
+                        accept="image/png, image/jpeg, image/jpg" 
+                        onChange={handleEditImageFileChange}
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="Ou cole o link da imagem (URL)..."
+                    value={editProjImageUrl}
+                    onChange={e => setEditProjImageUrl(e.target.value)}
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-white placeholder-slate-650 focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  />
+                  {editProjImageUrl && (
+                    <div className="mt-2 h-16 w-full rounded-lg overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center">
+                      <img src={editProjImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingProject(null)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 font-black uppercase text-[10px] tracking-wider rounded-xl transition active:scale-98 cursor-pointer text-center border border-slate-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[10px] tracking-wider rounded-xl shadow-lg transition active:scale-98 cursor-pointer"
+                  >
+                    Salvar Alterações
                   </button>
                 </div>
               </form>

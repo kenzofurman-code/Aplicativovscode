@@ -115,3 +115,48 @@ npm run build
 npm run lint
 npm run audit:prod
 ```
+
+## Deploy no Firebase Hosting
+
+O projeto já inclui `firebase.json` e `.firebaserc` configurados para o projeto Firebase `aplicativovscode`.
+
+1. Faça login na Firebase CLI:
+
+```bash
+npm run firebase -- login
+```
+
+2. Gere o build e publique no Hosting:
+
+```bash
+npm run deploy
+```
+
+3. Se precisar trocar o projeto Firebase padrão:
+
+```bash
+npm run firebase -- use --add
+```
+
+O deploy publica a pasta `dist`, gerada pelo Vite. As rotas são redirecionadas para `index.html`, o que permite funcionamento correto como SPA.
+
+## Deploy no Netlify
+
+O projeto também inclui `netlify.toml`, configurado para publicar a pasta `dist`.
+
+Configurações no painel do Netlify:
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Node/package manager: npm
+
+Em `Site configuration > Environment variables`, cadastre:
+
+```env
+VITE_FIREBASE_CONFIG={"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"...","measurementId":"..."}
+VITE_APP_ID=obra-app
+VITE_INITIAL_AUTH_TOKEN=
+VITE_GEMINI_API_KEY=
+```
+
+O redirect de SPA já está configurado para enviar rotas internas para `index.html`.
